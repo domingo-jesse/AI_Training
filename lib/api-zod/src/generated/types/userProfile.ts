@@ -5,22 +5,7 @@
  * AI Training Simulator API specification
  * OpenAPI spec version: 0.1.0
  */
-export interface HealthStatus {
-  status: string;
-}
-
-export interface ErrorResponse {
-  error: string;
-}
-
-export type UserProfileRole = typeof UserProfileRole[keyof typeof UserProfileRole];
-
-
-export const UserProfileRole = {
-  admin: 'admin',
-  learner: 'learner',
-  developer: 'developer',
-} as const;
+import type { UserProfileRole } from './userProfileRole';
 
 export interface UserProfile {
   id: string;
@@ -39,11 +24,3 @@ export interface UserProfile {
   isActive: boolean;
   createdAt: string;
 }
-
-export interface SyncUserInput {
-  email: string;
-  /** @nullable */
-  name?: string | null;
-  authProvider?: string;
-}
-

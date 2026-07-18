@@ -6,4 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './errorResponse';
 export * from './healthStatus';
+export * from './syncUserInput';
+export * from './userProfile';
+export * from './userProfileRole';

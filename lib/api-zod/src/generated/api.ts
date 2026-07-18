@@ -9,7 +9,6 @@ import * as zod from 'zod';
 
 
 /**
- * Returns server health status
  * @summary Health check (legacy)
  */
 export const HealthCheckResponse = zod.object({
@@ -18,11 +17,52 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const GetHealthResponse = zod.object({
   "status": zod.string()
+})
+
+
+/**
+ * @summary Get current authenticated user profile
+ */
+export const GetMeResponse = zod.object({
+  "id": zod.string(),
+  "clerkId": zod.string(),
+  "email": zod.string(),
+  "name": zod.string().nullish(),
+  "username": zod.string().nullish(),
+  "role": zod.enum(['admin', 'learner', 'developer']),
+  "team": zod.string().nullish(),
+  "organizationId": zod.string().nullish(),
+  "authProvider": zod.string(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary JIT-provision or update current Clerk user in local DB
+ */
+export const SyncUserBody = zod.object({
+  "email": zod.string(),
+  "name": zod.string().nullish(),
+  "authProvider": zod.string().optional()
+})
+
+export const SyncUserResponse = zod.object({
+  "id": zod.string(),
+  "clerkId": zod.string(),
+  "email": zod.string(),
+  "name": zod.string().nullish(),
+  "username": zod.string().nullish(),
+  "role": zod.enum(['admin', 'learner', 'developer']),
+  "team": zod.string().nullish(),
+  "organizationId": zod.string().nullish(),
+  "authProvider": zod.string(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string()
 })
 
 
