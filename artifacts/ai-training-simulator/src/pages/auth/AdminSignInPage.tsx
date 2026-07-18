@@ -1,9 +1,11 @@
 import { SignIn } from "@clerk/react";
 import { ShieldCheck } from "lucide-react";
+import { useRoleRedirect } from "@/hooks/useRoleRedirect";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function AdminSignInPage() {
+  useRoleRedirect();
   return (
     <div className="min-h-[100dvh] grid grid-cols-1 md:grid-cols-2 bg-background">
       {/* Brand Panel */}
