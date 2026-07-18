@@ -100,3 +100,227 @@ export const GetOrgMembersResponseItem = zod.object({
 export const GetOrgMembersResponse = zod.array(GetOrgMembersResponseItem)
 
 
+/**
+ * @summary List modules for an organization
+ */
+export const GetModulesQueryParams = zod.object({
+  "orgId": zod.coerce.number()
+})
+
+export const GetModulesResponseItem = zod.object({
+  "moduleId": zod.number(),
+  "title": zod.string(),
+  "category": zod.string(),
+  "difficulty": zod.string(),
+  "description": zod.string().nullish(),
+  "estimatedTime": zod.string().nullish(),
+  "status": zod.string(),
+  "scoringStyle": zod.string().optional(),
+  "llmScoringEnabled": zod.boolean().optional(),
+  "createdAt": zod.string().nullish(),
+  "updatedAt": zod.string().nullish()
+})
+export const GetModulesResponse = zod.array(GetModulesResponseItem)
+
+
+/**
+ * @summary Create a new module
+ */
+export const CreateModuleBody = zod.object({
+  "orgId": zod.number(),
+  "title": zod.string(),
+  "category": zod.string(),
+  "difficulty": zod.string(),
+  "description": zod.string().optional(),
+  "estimatedTime": zod.string().optional(),
+  "status": zod.string().optional(),
+  "scenarioTicket": zod.string().optional(),
+  "scenarioContext": zod.string().optional(),
+  "hiddenRootCause": zod.string().optional(),
+  "expectedDiagnosis": zod.string().optional(),
+  "scoringStyle": zod.string().optional(),
+  "llmScoringEnabled": zod.boolean().optional(),
+  "llmGraderInstructions": zod.string().optional()
+})
+
+export const CreateModuleResponse = zod.object({
+  "moduleId": zod.number(),
+  "title": zod.string(),
+  "category": zod.string(),
+  "difficulty": zod.string(),
+  "description": zod.string().nullish(),
+  "estimatedTime": zod.string().nullish(),
+  "status": zod.string(),
+  "scoringStyle": zod.string().optional(),
+  "llmScoringEnabled": zod.boolean().optional(),
+  "createdAt": zod.string().nullish(),
+  "updatedAt": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get a module with its questions
+ */
+export const GetModuleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetModuleResponse = zod.object({
+  "moduleId": zod.number(),
+  "title": zod.string(),
+  "category": zod.string(),
+  "difficulty": zod.string(),
+  "description": zod.string().nullish(),
+  "estimatedTime": zod.string().nullish(),
+  "status": zod.string(),
+  "scoringStyle": zod.string().optional(),
+  "llmScoringEnabled": zod.boolean().optional(),
+  "createdAt": zod.string().nullish(),
+  "updatedAt": zod.string().nullish()
+}).and(zod.object({
+  "scenarioTicket": zod.string().nullish(),
+  "scenarioContext": zod.string().nullish(),
+  "hiddenRootCause": zod.string().nullish(),
+  "expectedDiagnosis": zod.string().nullish(),
+  "expectedReasoningPath": zod.string().nullish(),
+  "expectedNextSteps": zod.string().nullish(),
+  "lessonTakeaway": zod.string().nullish(),
+  "learningObjectives": zod.string().nullish(),
+  "llmScoringEnabled": zod.boolean().optional(),
+  "llmGraderInstructions": zod.string().nullish(),
+  "questions": zod.array(zod.object({
+  "questionId": zod.number(),
+  "moduleId": zod.number(),
+  "questionOrder": zod.number(),
+  "questionText": zod.string(),
+  "expectedAnswer": zod.string().nullish(),
+  "maxPoints": zod.number().optional(),
+  "questionType": zod.string().optional(),
+  "rubric": zod.string().nullish(),
+  "aiConversationPrompt": zod.string().nullish(),
+  "aiRoleOrPersona": zod.string().nullish(),
+  "evaluationFocus": zod.string().nullish()
+})).optional()
+}))
+
+
+/**
+ * @summary Update a module
+ */
+export const UpdateModuleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateModuleBody = zod.object({
+  "title": zod.string().optional(),
+  "category": zod.string().optional(),
+  "difficulty": zod.string().optional(),
+  "description": zod.string().optional(),
+  "status": zod.string().optional(),
+  "scenarioTicket": zod.string().optional(),
+  "scenarioContext": zod.string().optional(),
+  "hiddenRootCause": zod.string().optional(),
+  "expectedDiagnosis": zod.string().optional(),
+  "scoringStyle": zod.string().optional(),
+  "llmScoringEnabled": zod.boolean().optional(),
+  "llmGraderInstructions": zod.string().optional()
+})
+
+export const UpdateModuleResponse = zod.object({
+  "moduleId": zod.number(),
+  "title": zod.string(),
+  "category": zod.string(),
+  "difficulty": zod.string(),
+  "description": zod.string().nullish(),
+  "estimatedTime": zod.string().nullish(),
+  "status": zod.string(),
+  "scoringStyle": zod.string().optional(),
+  "llmScoringEnabled": zod.boolean().optional(),
+  "createdAt": zod.string().nullish(),
+  "updatedAt": zod.string().nullish()
+})
+
+
+/**
+ * @summary Delete a module and its questions
+ */
+export const DeleteModuleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteModuleResponse = zod.void()
+
+
+/**
+ * @summary Add a question to a module
+ */
+export const CreateQuestionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreateQuestionBody = zod.object({
+  "questionText": zod.string(),
+  "expectedAnswer": zod.string().optional(),
+  "maxPoints": zod.number().optional(),
+  "questionType": zod.string().optional(),
+  "rubric": zod.string().optional()
+})
+
+export const CreateQuestionResponse = zod.object({
+  "questionId": zod.number(),
+  "moduleId": zod.number(),
+  "questionOrder": zod.number(),
+  "questionText": zod.string(),
+  "expectedAnswer": zod.string().nullish(),
+  "maxPoints": zod.number().optional(),
+  "questionType": zod.string().optional(),
+  "rubric": zod.string().nullish(),
+  "aiConversationPrompt": zod.string().nullish(),
+  "aiRoleOrPersona": zod.string().nullish(),
+  "evaluationFocus": zod.string().nullish()
+})
+
+
+/**
+ * @summary Update a question
+ */
+export const UpdateQuestionParams = zod.object({
+  "id": zod.coerce.number(),
+  "qId": zod.coerce.number()
+})
+
+export const UpdateQuestionBody = zod.object({
+  "questionText": zod.string().optional(),
+  "expectedAnswer": zod.string().optional(),
+  "maxPoints": zod.number().optional(),
+  "questionType": zod.string().optional(),
+  "rubric": zod.string().optional(),
+  "questionOrder": zod.number().optional()
+})
+
+export const UpdateQuestionResponse = zod.object({
+  "questionId": zod.number(),
+  "moduleId": zod.number(),
+  "questionOrder": zod.number(),
+  "questionText": zod.string(),
+  "expectedAnswer": zod.string().nullish(),
+  "maxPoints": zod.number().optional(),
+  "questionType": zod.string().optional(),
+  "rubric": zod.string().nullish(),
+  "aiConversationPrompt": zod.string().nullish(),
+  "aiRoleOrPersona": zod.string().nullish(),
+  "evaluationFocus": zod.string().nullish()
+})
+
+
+/**
+ * @summary Delete a question
+ */
+export const DeleteQuestionParams = zod.object({
+  "id": zod.coerce.number(),
+  "qId": zod.coerce.number()
+})
+
+export const DeleteQuestionResponse = zod.void()
+
+

@@ -6,8 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './createModuleInput';
+export * from './createQuestionInput';
 export * from './errorResponse';
+export * from './getModulesParams';
 export * from './healthStatus';
+export * from './moduleDetail';
+export * from './moduleQuestion';
+export * from './moduleSummary';
 export * from './organizationMembership';
 export * from './organizationMembershipRole';
 export * from './organizationMembershipStatus';
@@ -15,5 +21,7 @@ export * from './orgMember';
 export * from './orgMemberRole';
 export * from './orgMemberStatus';
 export * from './syncUserInput';
+export * from './updateModuleInput';
+export * from './updateQuestionInput';
 export * from './userProfile';
 export * from './userProfileRole';

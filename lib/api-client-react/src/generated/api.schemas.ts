@@ -110,3 +110,116 @@ export interface OrgMember {
   isActive: boolean;
 }
 
+export interface ModuleSummary {
+  moduleId: number;
+  title: string;
+  category: string;
+  difficulty: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  estimatedTime?: string | null;
+  status: string;
+  scoringStyle?: string;
+  llmScoringEnabled?: boolean;
+  /** @nullable */
+  createdAt?: string | null;
+  /** @nullable */
+  updatedAt?: string | null;
+}
+
+export interface ModuleQuestion {
+  questionId: number;
+  moduleId: number;
+  questionOrder: number;
+  questionText: string;
+  /** @nullable */
+  expectedAnswer?: string | null;
+  maxPoints?: number;
+  questionType?: string;
+  /** @nullable */
+  rubric?: string | null;
+  /** @nullable */
+  aiConversationPrompt?: string | null;
+  /** @nullable */
+  aiRoleOrPersona?: string | null;
+  /** @nullable */
+  evaluationFocus?: string | null;
+}
+
+export type ModuleDetail = ModuleSummary & ({
+  /** @nullable */
+  scenarioTicket?: string | null;
+  /** @nullable */
+  scenarioContext?: string | null;
+  /** @nullable */
+  hiddenRootCause?: string | null;
+  /** @nullable */
+  expectedDiagnosis?: string | null;
+  /** @nullable */
+  expectedReasoningPath?: string | null;
+  /** @nullable */
+  expectedNextSteps?: string | null;
+  /** @nullable */
+  lessonTakeaway?: string | null;
+  /** @nullable */
+  learningObjectives?: string | null;
+  llmScoringEnabled?: boolean;
+  /** @nullable */
+  llmGraderInstructions?: string | null;
+  questions?: ModuleQuestion[];
+});
+
+export interface CreateModuleInput {
+  orgId: number;
+  title: string;
+  category: string;
+  difficulty: string;
+  description?: string;
+  estimatedTime?: string;
+  status?: string;
+  scenarioTicket?: string;
+  scenarioContext?: string;
+  hiddenRootCause?: string;
+  expectedDiagnosis?: string;
+  scoringStyle?: string;
+  llmScoringEnabled?: boolean;
+  llmGraderInstructions?: string;
+}
+
+export interface UpdateModuleInput {
+  title?: string;
+  category?: string;
+  difficulty?: string;
+  description?: string;
+  status?: string;
+  scenarioTicket?: string;
+  scenarioContext?: string;
+  hiddenRootCause?: string;
+  expectedDiagnosis?: string;
+  scoringStyle?: string;
+  llmScoringEnabled?: boolean;
+  llmGraderInstructions?: string;
+}
+
+export interface CreateQuestionInput {
+  questionText: string;
+  expectedAnswer?: string;
+  maxPoints?: number;
+  questionType?: string;
+  rubric?: string;
+}
+
+export interface UpdateQuestionInput {
+  questionText?: string;
+  expectedAnswer?: string;
+  maxPoints?: number;
+  questionType?: string;
+  rubric?: string;
+  questionOrder?: number;
+}
+
+export type GetModulesParams = {
+orgId: number;
+};
+

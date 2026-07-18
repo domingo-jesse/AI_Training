@@ -14,6 +14,8 @@ tags:
     description: User management and auth
   - name: organizations
     description: Organization and membership management
+  - name: modules
+    description: Training module management
 paths:
   /healthz:
     get:
@@ -145,6 +147,170 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /modules:
+    get:
+      operationId: getModules
+      tags: [modules]
+      summary: List modules for an organization
+      parameters:
+        - in: query
+          name: orgId
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: List of modules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ModuleSummary"
+    post:
+      operationId: createModule
+      tags: [modules]
+      summary: Create a new module
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateModuleInput"
+      responses:
+        "201":
+          description: Created module
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModuleSummary"
+  /modules/{id}:
+    get:
+      operationId: getModule
+      tags: [modules]
+      summary: Get a module with its questions
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Module detail with questions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModuleDetail"
+        "404":
+          description: Not found
+    put:
+      operationId: updateModule
+      tags: [modules]
+      summary: Update a module
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateModuleInput"
+      responses:
+        "200":
+          description: Updated module
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModuleSummary"
+    delete:
+      operationId: deleteModule
+      tags: [modules]
+      summary: Delete a module and its questions
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
+  /modules/{id}/questions:
+    post:
+      operationId: createQuestion
+      tags: [modules]
+      summary: Add a question to a module
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateQuestionInput"
+      responses:
+        "201":
+          description: Created question
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModuleQuestion"
+  /modules/{id}/questions/{qId}:
+    put:
+      operationId: updateQuestion
+      tags: [modules]
+      summary: Update a question
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: number
+        - in: path
+          name: qId
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateQuestionInput"
+      responses:
+        "200":
+          description: Updated question
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModuleQuestion"
+    delete:
+      operationId: deleteQuestion
+      tags: [modules]
+      summary: Delete a question
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: number
+        - in: path
+          name: qId
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
 components:
   schemas:
     HealthStatus:
@@ -255,3 +421,186 @@ components:
         - status
         - joinedAt
         - isActive
+    ModuleSummary:
+      type: object
+      properties:
+        moduleId:
+          type: number
+        title:
+          type: string
+        category:
+          type: string
+        difficulty:
+          type: string
+        description:
+          type: ["string", "null"]
+        estimatedTime:
+          type: ["string", "null"]
+        status:
+          type: string
+        scoringStyle:
+          type: string
+        llmScoringEnabled:
+          type: boolean
+        createdAt:
+          type: ["string", "null"]
+        updatedAt:
+          type: ["string", "null"]
+      required:
+        - moduleId
+        - title
+        - category
+        - difficulty
+        - status
+    ModuleQuestion:
+      type: object
+      properties:
+        questionId:
+          type: number
+        moduleId:
+          type: number
+        questionOrder:
+          type: number
+        questionText:
+          type: string
+        expectedAnswer:
+          type: ["string", "null"]
+        maxPoints:
+          type: number
+        questionType:
+          type: string
+        rubric:
+          type: ["string", "null"]
+        aiConversationPrompt:
+          type: ["string", "null"]
+        aiRoleOrPersona:
+          type: ["string", "null"]
+        evaluationFocus:
+          type: ["string", "null"]
+      required:
+        - questionId
+        - moduleId
+        - questionOrder
+        - questionText
+    ModuleDetail:
+      allOf:
+        - $ref: "#/components/schemas/ModuleSummary"
+        - type: object
+          properties:
+            scenarioTicket:
+              type: ["string", "null"]
+            scenarioContext:
+              type: ["string", "null"]
+            hiddenRootCause:
+              type: ["string", "null"]
+            expectedDiagnosis:
+              type: ["string", "null"]
+            expectedReasoningPath:
+              type: ["string", "null"]
+            expectedNextSteps:
+              type: ["string", "null"]
+            lessonTakeaway:
+              type: ["string", "null"]
+            learningObjectives:
+              type: ["string", "null"]
+            llmScoringEnabled:
+              type: boolean
+            llmGraderInstructions:
+              type: ["string", "null"]
+            questions:
+              type: array
+              items:
+                $ref: "#/components/schemas/ModuleQuestion"
+    CreateModuleInput:
+      type: object
+      properties:
+        orgId:
+          type: number
+        title:
+          type: string
+        category:
+          type: string
+        difficulty:
+          type: string
+        description:
+          type: string
+        estimatedTime:
+          type: string
+        status:
+          type: string
+        scenarioTicket:
+          type: string
+        scenarioContext:
+          type: string
+        hiddenRootCause:
+          type: string
+        expectedDiagnosis:
+          type: string
+        scoringStyle:
+          type: string
+        llmScoringEnabled:
+          type: boolean
+        llmGraderInstructions:
+          type: string
+      required:
+        - orgId
+        - title
+        - category
+        - difficulty
+    UpdateModuleInput:
+      type: object
+      properties:
+        title:
+          type: string
+        category:
+          type: string
+        difficulty:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        scenarioTicket:
+          type: string
+        scenarioContext:
+          type: string
+        hiddenRootCause:
+          type: string
+        expectedDiagnosis:
+          type: string
+        scoringStyle:
+          type: string
+        llmScoringEnabled:
+          type: boolean
+        llmGraderInstructions:
+          type: string
+    CreateQuestionInput:
+      type: object
+      properties:
+        questionText:
+          type: string
+        expectedAnswer:
+          type: string
+        maxPoints:
+          type: number
+        questionType:
+          type: string
+        rubric:
+          type: string
+      required:
+        - questionText
+    UpdateQuestionInput:
+      type: object
+      properties:
+        questionText:
+          type: string
+        expectedAnswer:
+          type: string
+        maxPoints:
+          type: number
+        questionType:
+          type: string
+        rubric:
+          type: string
+        questionOrder:
+          type: number
