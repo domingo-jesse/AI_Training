@@ -1,20 +1,18 @@
-// Export your models here. Add one export per file
-// export * from "./posts";
+// Database schema — AI Training Simulator
 //
-// Each model/table should ideally be split into different files.
-// Each model/table should define a Drizzle table, insert schema, and types:
+// Schema is defined with Drizzle ORM.
+// Add table definitions here as the app grows, e.g.:
 //
-//   import { pgTable, text, serial } from "drizzle-orm/pg-core";
-//   import { createInsertSchema } from "drizzle-zod";
-//   import { z } from "zod/v4";
+//   export * from "./users";
+//   export * from "./trainingModules";
+//   export * from "./enrollments";
 //
-//   export const postsTable = pgTable("posts", {
-//     id: serial("id").primaryKey(),
-//     title: text("title").notNull(),
-//   });
+// Each file should export:
+//   - A drizzle pgTable (the source of truth for migrations)
+//   - An insertSchema (from drizzle-zod) for request validation
+//   - Inferred TypeScript types (InsertX / X)
 //
-//   export const insertPostSchema = createInsertSchema(postsTable).omit({ id: true });
-//   export type InsertPost = z.infer<typeof insertPostSchema>;
-//   export type Post = typeof postsTable.$inferSelect;
+// To apply schema changes to the dev database:
+//   pnpm --filter @workspace/db run push
 
-export {}
+export {};

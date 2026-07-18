@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "AI Training Simulator"
+version = "1.0.0"
+id = "artifacts/ai-training-simulator"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25489
+
+[services.development]
+run = "pnpm --filter @workspace/ai-training-simulator run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/ai-training-simulator", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/ai-training-simulator/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25489"
+BASE_PATH = "/"
