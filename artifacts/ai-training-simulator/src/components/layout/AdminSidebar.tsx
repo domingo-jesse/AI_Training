@@ -26,8 +26,8 @@ export function AdminSidebar() {
     <aside className="w-64 bg-sidebar border-r border-sidebar-border h-[100dvh] flex flex-col sticky top-0">
       <div className="h-16 flex items-center px-6 border-b border-sidebar-border">
         <Link href="/dashboard" className="flex items-center gap-3">
-          <img src={`${basePath}/logo.svg`} alt="NexusAI Logo" className="w-8 h-8" />
-          <span className="font-display font-semibold text-lg tracking-tight text-sidebar-foreground">NexusAI Admin</span>
+          <img src={`${basePath}/logo.svg`} alt="Training Simulator Logo" className="w-8 h-8" />
+          <span className="font-display font-semibold text-lg tracking-tight text-sidebar-foreground">Training Simulator Admin</span>
         </Link>
       </div>
       

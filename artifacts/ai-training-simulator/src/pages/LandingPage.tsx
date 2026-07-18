@@ -10,8 +10,8 @@ export default function LandingPage() {
     <div className="min-h-[100dvh] flex flex-col bg-background selection:bg-primary/20">
       <header className="h-20 border-b border-border/40 px-6 flex items-center justify-between sticky top-0 bg-background/80 backdrop-blur-md z-50">
         <div className="flex items-center gap-3">
-          <img src={`${basePath}/logo.svg`} alt="NexusAI Logo" className="w-10 h-10" />
-          <span className="font-display font-bold text-2xl tracking-tight">NexusAI</span>
+          <img src={`${basePath}/logo.svg`} alt="Training Simulator Logo" className="w-10 h-10" />
+          <span className="font-display font-bold text-2xl tracking-tight">Training Simulator</span>
         </div>
         <nav className="flex items-center gap-4">
           <Link href="/sign-in">
@@ -88,7 +88,7 @@ export default function LandingPage() {
       </main>
 
       <footer className="py-8 text-center text-sm text-muted-foreground border-t border-border/40 mt-20">
-        <p>© {new Date().getFullYear()} NexusAI Enterprise Training. All rights reserved.</p>
+        <p>© {new Date().getFullYear()} Training Simulator. All rights reserved.</p>
       </footer>
     </div>
   );
