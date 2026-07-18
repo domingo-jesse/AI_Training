@@ -1,12 +1,10 @@
 import { type Request, type Response, type NextFunction } from "express";
 import { getAuth } from "@clerk/express";
-import { db, usersTable } from "@workspace/db";
+import { db, users as usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import type { UserRole } from "@workspace/db";
 
 /**
- * Requires a valid Clerk session. Attaches req.clerkUserId and, if available,
- * the local DB user to req.localUser.
+ * Requires a valid Clerk session. Attaches req.clerkUserId.
  */
 export async function requireAuth(
   req: Request,
@@ -27,6 +25,7 @@ export async function requireAuth(
 
 /**
  * Requires a valid Clerk session AND the user to exist in the local DB.
+ * Matches on users.id (text) = Clerk user ID.
  * Attaches req.localUser.
  */
 export async function requireLocalUser(
@@ -45,7 +44,7 @@ export async function requireLocalUser(
   const [user] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.clerkId, clerkUserId))
+    .where(eq(usersTable.id, clerkUserId))
     .limit(1);
 
   if (!user) {
@@ -67,14 +66,14 @@ export async function requireLocalUser(
  * Requires the local user to have one of the specified roles.
  * Must be used after requireLocalUser.
  */
-export function requireRole(...roles: UserRole[]) {
+export function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const user = (req as any).localUser;
     if (!user) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    if (!roles.includes(user.role as UserRole)) {
+    if (!roles.includes(user.role)) {
       res.status(403).json({ error: "Forbidden: insufficient role" });
       return;
     }
@@ -83,8 +82,7 @@ export function requireRole(...roles: UserRole[]) {
 }
 
 /**
- * Requires the local user to belong to the organization
- * specified in req.params.orgId or req.localUser.organizationId.
+ * Attaches req.orgId from the local user's organization.
  * Must be used after requireLocalUser.
  */
 export function requireOrgAccess(

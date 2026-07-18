@@ -1,10 +1,9 @@
-import { db, usersTable, organizationsTable } from "@workspace/db";
+import { db, users as usersTable, organizations } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import type { User } from "@workspace/db";
 
 interface SyncUserParams {
-  clerkId: string;
+  clerkId: string;   // stored in users.id (text external-id column)
   email: string;
   name?: string | null;
   authProvider?: string;
@@ -12,79 +11,67 @@ interface SyncUserParams {
 
 /**
  * JIT-provision or update a user in the local DB based on their Clerk identity.
- * Returns { user, created } where created=true if a new row was inserted.
- *
- * On first sign-in:
- *  - If no default org exists, create one named after the user's email domain.
- *  - Create the user record with role='learner' by default.
- *
- * On subsequent sign-ins:
- *  - Update email/name/authProvider in case they changed in Clerk.
+ * Supabase schema: users.id (text) = external/Clerk ID, users.user_id (bigint) = PK.
+ * Returns { user, created }.
  */
 export async function syncUserFromClerk(
   params: SyncUserParams,
-): Promise<{ user: User; created: boolean }> {
+): Promise<{ user: typeof usersTable.$inferSelect; created: boolean }> {
   const { clerkId, email, name, authProvider = "clerk" } = params;
 
-  // Check if user already exists
+  // Check if user already exists (match on the text `id` column = Clerk user ID)
   const [existing] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.clerkId, clerkId))
+    .where(eq(usersTable.id, clerkId))
     .limit(1);
 
   if (existing) {
-    // Update mutable fields that may change in Clerk
     const [updated] = await db
       .update(usersTable)
       .set({ email, name: name ?? existing.name, authProvider })
-      .where(eq(usersTable.clerkId, clerkId))
+      .where(eq(usersTable.id, clerkId))
       .returning();
-
-    logger.info({ userId: updated.id, clerkId }, "User synced (updated)");
+    logger.info({ userId: updated.userId, clerkId }, "User synced (updated)");
     return { user: updated, created: false };
   }
 
   // Determine organization: use first existing org or create a default one
-  let [org] = await db.select().from(organizationsTable).limit(1);
+  let [org] = await db.select().from(organizations).limit(1);
 
   if (!org) {
     const domain = email.split("@")[1] ?? "default";
     const [newOrg] = await db
-      .insert(organizationsTable)
-      .values({
-        name: `${domain} Organization`,
-        slug: domain.replace(/\./g, "-"),
-        settings: {},
-      })
+      .insert(organizations)
+      .values({ name: `${domain} Organization` })
       .returning();
     org = newOrg;
-    logger.info({ orgId: org.id, domain }, "Default organization created");
+    logger.info({ orgId: org.organizationId, domain }, "Default organization created");
   }
 
-  // Create the user — first user in an org becomes admin
-  const [orgUserCount] = await db
+  // Count existing users in org to determine role
+  const existingUsers = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.organizationId, org.id));
+    .where(eq(usersTable.organizationId, org.organizationId));
 
-  const isFirstUser = !orgUserCount;
+  const isFirstUser = existingUsers.length === 0;
 
   const [newUser] = await db
     .insert(usersTable)
     .values({
-      clerkId,
+      id: clerkId,              // Clerk user ID goes in the text `id` field
       email,
-      name: name ?? null,
+      name: name ?? "User",
       role: isFirstUser ? "admin" : "learner",
-      organizationId: org.id,
+      organizationId: org.organizationId,
       authProvider,
       isActive: true,
     })
     .returning();
 
   logger.info(
-    { userId: newUser.id, clerkId, role: newUser.role, orgId: org.id },
+    { userId: newUser.userId, clerkId, role: newUser.role, orgId: org.organizationId },
     "User provisioned",
   );
 

@@ -1,0 +1,2 @@
+- [Supabase connection](supabase-connection.md) — session pooler required; direct connection times out from Replit's network.
+- [Supabase schema source of truth](supabase-schema.md) — introspected schema replaces hand-written schema; users.id (text) = Clerk user ID, not a clerkId column.
