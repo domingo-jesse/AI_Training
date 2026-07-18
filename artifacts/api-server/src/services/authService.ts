@@ -19,7 +19,7 @@ export async function syncUserFromClerk(
 ): Promise<{ user: typeof usersTable.$inferSelect; created: boolean }> {
   const { clerkId, email, name, authProvider = "clerk" } = params;
 
-  // Check if user already exists (match on the text `id` column = Clerk user ID)
+  // 1. Match on Clerk ID (primary)
   const [existing] = await db
     .select()
     .from(usersTable)
@@ -33,6 +33,23 @@ export async function syncUserFromClerk(
       .where(eq(usersTable.id, clerkId))
       .returning();
     logger.info({ userId: updated.userId, clerkId }, "User synced (updated)");
+    return { user: updated, created: false };
+  }
+
+  // 2. Fallback: match on email for admin-pre-created accounts (id starts with "pending_")
+  const [emailMatch] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, email))
+    .limit(1);
+
+  if (emailMatch && (!emailMatch.id || emailMatch.id.startsWith("pending_"))) {
+    const [updated] = await db
+      .update(usersTable)
+      .set({ id: clerkId, email, name: name ?? emailMatch.name, authProvider, isActive: true })
+      .where(eq(usersTable.userId, emailMatch.userId))
+      .returning();
+    logger.info({ userId: updated.userId, clerkId }, "User synced (linked pre-created account)");
     return { user: updated, created: false };
   }
 

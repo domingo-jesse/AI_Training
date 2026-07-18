@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,22 +6,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Users, UserPlus, RefreshCw, AlertCircle, Trash2, X, CheckCircle2,
+  Users, UserPlus, RefreshCw, AlertCircle, X, CheckCircle2,
+  ShieldOff, ShieldCheck, Pencil, Check, ChevronDown,
 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-interface OrgMember {
-  membershipId: string;
+interface AdminUser {
   userId: number;
   name: string;
   email: string | null;
-  role: "owner" | "admin" | "manager" | "learner";
-  status: "active" | "inactive" | "invited";
-  joinedAt: string;
-  isActive: boolean;
+  role: string;
+  isActive: boolean | null;
+  createdAt: string | null;
+  authProvider: string | null;
+  membershipId: string;
+  membershipRole: string;
+  membershipStatus: string;
 }
+
+const MEMBERSHIP_ROLE_OPTIONS = ["learner", "manager", "admin", "owner"] as const;
+type MembershipRole = typeof MEMBERSHIP_ROLE_OPTIONS[number];
 
 const ROLE_COLORS: Record<string, string> = {
   owner:   "bg-purple-500/20 text-purple-400 border-purple-500/30",
@@ -30,71 +36,132 @@ const ROLE_COLORS: Record<string, string> = {
   learner: "bg-slate-500/20 text-slate-400 border-slate-500/30",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  active:   "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  inactive: "bg-red-500/20 text-red-400 border-red-500/30",
-  invited:  "bg-amber-500/20 text-amber-400 border-amber-500/30",
-};
-
-const ROLES = ["learner", "manager", "admin", "owner"] as const;
-
 function getInitials(name: string) {
   return name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
 }
 
-function useOrgMembers(orgId: number | undefined) {
-  const [members, setMembers] = useState<OrgMember[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastOrgId, setLastOrgId] = useState<number | undefined>();
+function fmt(d: string | null) {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
 
-  const load = (id: number) => {
-    setIsLoading(true);
-    setError(null);
-    fetch(`${base}/api/organizations/${id}/members`, { credentials: "include" })
-      .then(r => { if (!r.ok) throw new Error(`Failed (${r.status})`); return r.json(); })
-      .then(data => { setMembers(data); setLastOrgId(id); })
-      .catch(e => setError(e.message))
-      .finally(() => setIsLoading(false));
+// Inline editable name/email cell
+function EditableCell({ value, onSave }: { value: string; onSave: (v: string) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const commit = async () => {
+    if (draft.trim() === value) { setEditing(false); return; }
+    setSaving(true);
+    await onSave(draft.trim());
+    setSaving(false);
+    setEditing(false);
   };
 
-  if (orgId !== undefined && orgId !== lastOrgId && !isLoading) load(orgId);
-
-  return { members, setMembers, isLoading, error, reload: () => orgId && load(orgId) };
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <Input
+          ref={inputRef}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setEditing(false); setDraft(value); } }}
+          className="h-7 text-sm py-0 px-2 w-44"
+          autoFocus
+        />
+        <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={commit} disabled={saving}>
+          {saving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3 text-emerald-400" />}
+        </Button>
+        <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => { setEditing(false); setDraft(value); }}>
+          <X className="w-3 h-3" />
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <button
+      className="group/cell flex items-center gap-1.5 text-left hover:text-primary transition-colors text-sm"
+      onClick={() => { setEditing(true); setDraft(value); }}
+    >
+      {value || <span className="text-muted-foreground italic">—</span>}
+      <Pencil className="w-3 h-3 opacity-0 group-hover/cell:opacity-50 transition-opacity shrink-0" />
+    </button>
+  );
 }
 
 export default function AccountsPage() {
   const { currentOrg, isLoading: orgLoading } = useOrganization();
-  const { members, setMembers, isLoading, error, reload } = useOrgMembers(currentOrg?.organizationId);
+  const orgId = currentOrg?.organizationId;
 
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [addEmail, setAddEmail] = useState("");
-  const [addRole, setAddRole] = useState<typeof ROLES[number]>("learner");
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Add form state
+  const [showAdd, setShowAdd] = useState(false);
+  const [addForm, setAddForm] = useState({ name: "", email: "", role: "learner" as MembershipRole });
   const [addLoading, setAddLoading] = useState(false);
   const [addMsg, setAddMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
-  const [removingId, setRemovingId] = useState<number | null>(null);
-  const [updatingId, setUpdatingId] = useState<number | null>(null);
+  // Per-row action state
+  const [patchingId, setPatchingId] = useState<number | null>(null);
 
-  const orgId = currentOrg?.organizationId;
+  const load = () => {
+    if (!orgId) return;
+    setLoading(true);
+    setError(null);
+    fetch(`${base}/api/admin/users?orgId=${orgId}`, { credentials: "include" })
+      .then(r => { if (!r.ok) throw new Error(`Failed (${r.status})`); return r.json(); })
+      .then(setUsers)
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { if (orgId) load(); }, [orgId]);
+
+  const patch = async (userId: number, updates: Partial<AdminUser & { role: string }>) => {
+    setPatchingId(userId);
+    try {
+      const r = await fetch(`${base}/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ orgId, ...updates }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const updated: AdminUser = await r.json();
+      setUsers(prev => prev.map(u => u.userId === userId ? updated : u));
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setPatchingId(null);
+    }
+  };
 
   const handleAdd = async () => {
-    if (!addEmail.trim() || !orgId) return;
+    if (!addForm.name.trim() || !addForm.email.trim() || !orgId) {
+      setAddMsg({ type: "err", text: "Name and email are required." });
+      return;
+    }
     setAddLoading(true);
     setAddMsg(null);
     try {
-      const r = await fetch(`${base}/api/organizations/${orgId}/members`, {
+      const r = await fetch(`${base}/api/admin/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email: addEmail.trim(), role: addRole }),
+        body: JSON.stringify({ orgId, ...addForm }),
       });
       const body = await r.json();
-      if (!r.ok) throw new Error(body.error ?? "Failed to add member");
-      setMembers(prev => [...prev, body]);
-      setAddMsg({ type: "ok", text: `${body.name} added as ${addRole}.` });
-      setAddEmail("");
-      setAddRole("learner");
+      if (!r.ok) throw new Error(body.error ?? "Failed");
+      setUsers(prev => {
+        const exists = prev.find(u => u.userId === body.userId);
+        return exists ? prev.map(u => u.userId === body.userId ? body : u) : [...prev, body];
+      });
+      setAddMsg({ type: "ok", text: `${body.name} added as ${addForm.role}.` });
+      setAddForm({ name: "", email: "", role: "learner" });
     } catch (e: any) {
       setAddMsg({ type: "err", text: e.message });
     } finally {
@@ -102,47 +169,9 @@ export default function AccountsPage() {
     }
   };
 
-  const handleRoleChange = async (userId: number, newRole: string) => {
-    if (!orgId) return;
-    setUpdatingId(userId);
-    try {
-      const r = await fetch(`${base}/api/organizations/${orgId}/members/${userId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ role: newRole }),
-      });
-      if (!r.ok) throw new Error("Failed to update role");
-      setMembers(prev => prev.map(m => m.userId === userId ? { ...m, role: newRole as OrgMember["role"] } : m));
-    } catch {
-      // silent — UI will revert on next reload
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  const handleRemove = async (userId: number, name: string) => {
-    if (!orgId || !confirm(`Remove ${name} from this organization?`)) return;
-    setRemovingId(userId);
-    try {
-      const r = await fetch(`${base}/api/organizations/${orgId}/members/${userId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!r.ok) {
-        const b = await r.json();
-        alert(b.error ?? "Failed to remove");
-        return;
-      }
-      setMembers(prev => prev.filter(m => m.userId !== userId));
-    } finally {
-      setRemovingId(null);
-    }
-  };
-
-  // Split active vs inactive
-  const active = members.filter(m => m.status === "active");
-  const inactive = members.filter(m => m.status === "inactive");
+  // Partition users
+  const active = users.filter(u => u.isActive !== false && u.membershipStatus === "active");
+  const inactive = users.filter(u => u.isActive === false || u.membershipStatus === "inactive");
 
   if (orgLoading) {
     return (
@@ -157,9 +186,7 @@ export default function AccountsPage() {
   if (!currentOrg) {
     return (
       <AdminLayout>
-        <div className="mb-8">
-          <h1 className="text-3xl font-display font-bold">Account Management</h1>
-        </div>
+        <div className="mb-8"><h1 className="text-3xl font-display font-bold">Account Management</h1></div>
         <Card className="flex flex-col items-center justify-center p-24 text-center border-dashed">
           <AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
           <h2 className="text-xl font-semibold mb-2">No Organization Found</h2>
@@ -176,69 +203,78 @@ export default function AccountsPage() {
         <div>
           <h1 className="text-3xl font-display font-bold">Account Management</h1>
           <p className="text-muted-foreground mt-1">
-            {currentOrg.organizationName} · {active.length} active member{active.length !== 1 ? "s" : ""}
+            {currentOrg.organizationName} · {active.length} active · {inactive.length} deactivated
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={reload} disabled={isLoading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button size="sm" onClick={() => { setShowAddForm(v => !v); setAddMsg(null); }}>
-            {showAddForm ? <X className="w-4 h-4 mr-2" /> : <UserPlus className="w-4 h-4 mr-2" />}
-            {showAddForm ? "Cancel" : "Add Member"}
+          <Button size="sm" onClick={() => { setShowAdd(v => !v); setAddMsg(null); }}>
+            {showAdd ? <X className="w-4 h-4 mr-2" /> : <UserPlus className="w-4 h-4 mr-2" />}
+            {showAdd ? "Cancel" : "Add User"}
           </Button>
         </div>
       </div>
 
-      {/* Add member form */}
-      {showAddForm && (
+      {/* Add user form */}
+      {showAdd && (
         <Card className="mb-6 border-primary/30">
           <CardHeader className="py-4 px-5 border-b border-border/50">
-            <CardTitle className="text-base">Add Member to {currentOrg.organizationName}</CardTitle>
+            <CardTitle className="text-base">Add User to {currentOrg.organizationName}</CardTitle>
           </CardHeader>
           <CardContent className="p-5 space-y-4">
             <p className="text-sm text-muted-foreground">
-              The user must have signed in to the app at least once before you can add them.
+              Creates the account immediately. If the user signs in with the same email address, their account will be linked automatically.
             </p>
-            <div className="flex gap-3 items-end flex-wrap">
-              <div className="flex-1 min-w-48 space-y-1.5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm">Full name *</Label>
+                <Input
+                  placeholder="Jane Smith"
+                  value={addForm.name}
+                  onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
                 <Label className="text-sm">Email address *</Label>
                 <Input
                   type="email"
-                  placeholder="user@example.com"
-                  value={addEmail}
-                  onChange={e => setAddEmail(e.target.value)}
+                  placeholder="jane@example.com"
+                  value={addForm.email}
+                  onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))}
                   onKeyDown={e => e.key === "Enter" && handleAdd()}
-                  autoFocus
                 />
               </div>
-              <div className="w-40 space-y-1.5">
+              <div className="space-y-1.5">
                 <Label className="text-sm">Role</Label>
                 <select
-                  value={addRole}
-                  onChange={e => setAddRole(e.target.value as typeof ROLES[number])}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  value={addForm.role}
+                  onChange={e => setAddForm(f => ({ ...f, role: e.target.value as MembershipRole }))}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 >
-                  {ROLES.map(r => <option key={r} value={r} className="capitalize">{r}</option>)}
+                  {MEMBERSHIP_ROLE_OPTIONS.map(r => (
+                    <option key={r} value={r} className="capitalize">{r}</option>
+                  ))}
                 </select>
               </div>
-              <Button onClick={handleAdd} disabled={addLoading || !addEmail.trim()}>
-                {addLoading
-                  ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  : <UserPlus className="w-4 h-4 mr-2" />}
-                Add Member
-              </Button>
             </div>
 
             {addMsg && (
               <div className={`flex items-center gap-2 text-sm p-3 rounded-lg ${addMsg.type === "ok" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
-                {addMsg.type === "ok"
-                  ? <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  : <AlertCircle className="w-4 h-4 shrink-0" />}
+                {addMsg.type === "ok" ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
                 {addMsg.text}
               </div>
             )}
+
+            <div className="flex gap-3">
+              <Button onClick={handleAdd} disabled={addLoading || !addForm.name.trim() || !addForm.email.trim()}>
+                {addLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
+                Add User
+              </Button>
+              <Button variant="outline" onClick={() => { setShowAdd(false); setAddMsg(null); }}>Cancel</Button>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -248,153 +284,161 @@ export default function AccountsPage() {
           <CardContent className="flex items-center gap-3 py-4">
             <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
             <p className="text-red-400 text-sm">{error}</p>
+            <Button variant="ghost" size="sm" className="ml-auto" onClick={load}>Retry</Button>
           </CardContent>
         </Card>
       )}
 
-      {isLoading && (
-        <Card>
-          <CardContent className="flex items-center justify-center py-16">
-            <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
-          </CardContent>
-        </Card>
+      {loading && (
+        <div className="flex justify-center py-20">
+          <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+        </div>
       )}
 
-      {!isLoading && !error && (
-        <>
-          {/* Active members */}
-          {active.length === 0 ? (
-            <Card className="flex flex-col items-center justify-center p-20 text-center border-dashed mb-4">
+      {!loading && !error && (
+        <div className="space-y-6">
+          {/* ── Active users ── */}
+          {active.length === 0 && !showAdd ? (
+            <Card className="flex flex-col items-center justify-center p-20 text-center border-dashed">
               <Users className="w-12 h-12 text-muted-foreground mb-4" />
-              <h2 className="text-xl font-semibold mb-2">No Active Members</h2>
+              <h2 className="text-xl font-semibold mb-2">No Active Users</h2>
               <p className="text-muted-foreground mb-4">Add someone to get started.</p>
-              <Button size="sm" onClick={() => setShowAddForm(true)}>
-                <UserPlus className="w-4 h-4 mr-2" /> Add Member
+              <Button size="sm" onClick={() => setShowAdd(true)}>
+                <UserPlus className="w-4 h-4 mr-2" /> Add User
               </Button>
             </Card>
           ) : (
-            <Card className="mb-6">
-              <CardHeader className="border-b border-border pb-4 flex-row items-center justify-between">
+            <Card>
+              <CardHeader className="py-4 px-5 border-b border-border/50 flex-row items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Users className="w-5 h-5 text-primary" />
-                  Active Members <span className="text-muted-foreground font-normal">({active.length})</span>
+                  Active Users
+                  <span className="text-muted-foreground font-normal text-sm">({active.length})</span>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
-                <div className="divide-y divide-border">
-                  {active.map(member => (
-                    <div key={member.membershipId} className="flex items-center gap-4 px-6 py-4 hover:bg-muted/20 transition-colors group">
-                      {/* Avatar */}
-                      <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-semibold text-sm shrink-0 select-none">
-                        {getInitials(member.name)}
-                      </div>
 
-                      {/* Name + email */}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-foreground truncate">{member.name}</p>
-                        <p className="text-sm text-muted-foreground truncate">{member.email ?? "—"}</p>
-                      </div>
+              {/* Column headers */}
+              <div className="grid grid-cols-[2.5rem_1fr_1fr_9rem_7rem_6rem_2.5rem] gap-3 px-5 py-2 border-b border-border/40 text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                <span />
+                <span>Name</span>
+                <span>Email</span>
+                <span>Role</span>
+                <span>Status</span>
+                <span>Added</span>
+                <span />
+              </div>
 
-                      {/* Role selector */}
-                      <div className="shrink-0">
-                        {updatingId === member.userId ? (
-                          <RefreshCw className="w-4 h-4 text-muted-foreground animate-spin" />
-                        ) : (
-                          <select
-                            value={member.role}
-                            onChange={e => handleRoleChange(member.userId, e.target.value)}
-                            className={`h-7 rounded border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-ring capitalize cursor-pointer ${ROLE_COLORS[member.role] ?? ""}`}
-                          >
-                            {ROLES.map(r => (
-                              <option key={r} value={r} className="bg-background text-foreground capitalize">{r}</option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-
-                      {/* Status badge */}
-                      <Badge variant="outline" className={`text-xs capitalize shrink-0 ${STATUS_COLORS[member.status] ?? ""}`}>
-                        {member.status}
-                      </Badge>
-
-                      {/* Joined date */}
-                      <p className="text-xs text-muted-foreground w-24 text-right shrink-0">
-                        {new Date(member.joinedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                      </p>
-
-                      {/* Remove button — shows on hover */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                        onClick={() => handleRemove(member.userId, member.name)}
-                        disabled={removingId === member.userId}
-                        title="Remove from organization"
-                      >
-                        {removingId === member.userId
-                          ? <RefreshCw className="w-4 h-4 animate-spin" />
-                          : <Trash2 className="w-4 h-4" />}
-                      </Button>
+              <div className="divide-y divide-border/40">
+                {active.map(u => (
+                  <div
+                    key={u.userId}
+                    className="grid grid-cols-[2.5rem_1fr_1fr_9rem_7rem_6rem_2.5rem] gap-3 items-center px-5 py-3 hover:bg-muted/20 transition-colors group"
+                  >
+                    {/* Avatar */}
+                    <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0 select-none">
+                      {getInitials(u.name)}
                     </div>
-                  ))}
-                </div>
-              </CardContent>
+
+                    {/* Editable name */}
+                    <div className="min-w-0">
+                      <EditableCell value={u.name} onSave={name => patch(u.userId, { name })} />
+                      {u.authProvider === "pending" && (
+                        <span className="text-xs text-amber-400">Pending sign-in</span>
+                      )}
+                    </div>
+
+                    {/* Editable email */}
+                    <div className="min-w-0">
+                      <EditableCell value={u.email ?? ""} onSave={email => patch(u.userId, { email })} />
+                    </div>
+
+                    {/* Role dropdown */}
+                    <div>
+                      {patchingId === u.userId ? (
+                        <RefreshCw className="w-4 h-4 text-muted-foreground animate-spin" />
+                      ) : (
+                        <select
+                          value={u.membershipRole}
+                          onChange={e => patch(u.userId, { role: e.target.value })}
+                          className={`h-7 rounded border border-input bg-background px-2 pr-6 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-ring capitalize cursor-pointer appearance-none ${ROLE_COLORS[u.membershipRole] ?? ""}`}
+                        >
+                          {MEMBERSHIP_ROLE_OPTIONS.map(r => (
+                            <option key={r} value={r} className="bg-background text-foreground capitalize">{r}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    {/* Status */}
+                    <div>
+                      <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+                        Active
+                      </Badge>
+                    </div>
+
+                    {/* Added date */}
+                    <div className="text-xs text-muted-foreground">{fmt(u.createdAt)}</div>
+
+                    {/* Deactivate */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Deactivate user"
+                      disabled={patchingId === u.userId}
+                      onClick={() => {
+                        if (confirm(`Deactivate ${u.name}? They won't be able to sign in.`))
+                          patch(u.userId, { isActive: false });
+                      }}
+                    >
+                      <ShieldOff className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
             </Card>
           )}
 
-          {/* Inactive members (collapsed) */}
+          {/* ── Deactivated users ── */}
           {inactive.length > 0 && (
-            <Card className="border-dashed opacity-70">
-              <CardHeader className="pb-3 border-b border-border/50">
+            <Card className="opacity-75">
+              <CardHeader className="py-3 px-5 border-b border-border/40">
                 <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  Removed Members ({inactive.length})
+                  <ShieldOff className="w-4 h-4" />
+                  Deactivated Users ({inactive.length})
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
-                <div className="divide-y divide-border/50">
-                  {inactive.map(member => (
-                    <div key={member.membershipId} className="flex items-center gap-4 px-6 py-3 hover:bg-muted/10 transition-colors">
-                      <div className="w-8 h-8 rounded-full bg-muted/40 text-muted-foreground flex items-center justify-center text-xs font-semibold shrink-0">
-                        {getInitials(member.name)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-muted-foreground truncate line-through">{member.name}</p>
-                        <p className="text-xs text-muted-foreground/60 truncate">{member.email ?? "—"}</p>
-                      </div>
-                      <Badge variant="outline" className="text-xs capitalize bg-red-500/10 text-red-400 border-red-500/30 shrink-0">
-                        removed
-                      </Badge>
-                      {/* Re-add button */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="shrink-0 text-xs h-7"
-                        onClick={async () => {
-                          if (!member.email || !orgId) return;
-                          setAddLoading(true);
-                          try {
-                            const r = await fetch(`${base}/api/organizations/${orgId}/members`, {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              credentials: "include",
-                              body: JSON.stringify({ email: member.email, role: member.role }),
-                            });
-                            if (r.ok) reload();
-                          } finally {
-                            setAddLoading(false);
-                          }
-                        }}
-                      >
-                        Restore
-                      </Button>
+              <div className="divide-y divide-border/30">
+                {inactive.map(u => (
+                  <div key={u.userId} className="flex items-center gap-4 px-5 py-3 hover:bg-muted/10 transition-colors">
+                    <div className="w-8 h-8 rounded-full bg-muted/40 text-muted-foreground flex items-center justify-center text-xs font-semibold shrink-0">
+                      {getInitials(u.name)}
                     </div>
-                  ))}
-                </div>
-              </CardContent>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-muted-foreground truncate line-through">{u.name}</p>
+                      <p className="text-xs text-muted-foreground/60 truncate">{u.email ?? "—"}</p>
+                    </div>
+                    <Badge variant="outline" className="text-xs bg-red-500/10 text-red-400 border-red-500/30 shrink-0">
+                      Deactivated
+                    </Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 text-xs h-7 gap-1.5"
+                      disabled={patchingId === u.userId}
+                      onClick={() => patch(u.userId, { isActive: true })}
+                    >
+                      {patchingId === u.userId
+                        ? <RefreshCw className="w-3 h-3 animate-spin" />
+                        : <ShieldCheck className="w-3 h-3 text-emerald-400" />}
+                      Reactivate
+                    </Button>
+                  </div>
+                ))}
+              </div>
             </Card>
           )}
-        </>
+        </div>
       )}
     </AdminLayout>
   );

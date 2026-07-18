@@ -5,6 +5,7 @@ import organizationsRouter from "./organizations";
 import modulesRouter from "./modules";
 import assignmentsRouter from "./assignments";
 import attemptsRouter from "./attempts";
+import adminUsersRouter from "./adminUsers";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(organizationsRouter);
 router.use(modulesRouter);
 router.use(assignmentsRouter);
 router.use(attemptsRouter);
+router.use(adminUsersRouter);
 
 export default router;
