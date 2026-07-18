@@ -1,38 +1,47 @@
-import { useEffect } from "react";
+import { useLayoutEffect, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useUser } from "@clerk/react";
 
-const PORTAL_KEY = "loginPortal";
+const KEY = "ts_portal";
+const TTL = 15 * 60 * 1000; // 15 minutes — plenty of time to complete OAuth
+
+/** Call on the admin sign-in page to stamp intent before OAuth starts. */
+export function useMarkAdminPortal() {
+  useLayoutEffect(() => {
+    localStorage.setItem(KEY, JSON.stringify({ portal: "admin", at: Date.now() }));
+  }, []);
+}
 
 /**
- * Stores which portal (admin | learner) the user signed in from, then
- * redirects them to the right home after sign-in completes — including
- * after Google / SSO OAuth flows that bounce through /sign-in.
+ * After any sign-in (email OR Google OAuth) redirect to the right place:
+ *   - "admin" stamp in localStorage  → /dashboard
+ *   - no stamp / expired             → /learner/home
  *
- * Storage is set only while the user is signed OUT, so it won't be
- * overwritten by whichever page Clerk lands on after the OAuth callback.
+ * `defaultDest` is used only if the user is already signed in when they
+ * land on this page and no stamp exists (manual navigation).
  */
-export function usePortalRedirect(portal: "admin" | "learner") {
+export function usePortalRedirect(defaultDest: string) {
   const { isSignedIn, isLoaded } = useUser();
   const [, setLocation] = useLocation();
 
-  // Remember the portal while the user is signed out (before OAuth starts)
   useEffect(() => {
-    if (isLoaded && !isSignedIn) {
-      sessionStorage.setItem(PORTAL_KEY, portal);
-    }
-  }, [isLoaded, isSignedIn, portal]);
+    if (!isLoaded || !isSignedIn) return;
 
-  // Once signed in, redirect based on the stored portal
-  useEffect(() => {
-    if (isLoaded && isSignedIn) {
-      const intent = sessionStorage.getItem(PORTAL_KEY) ?? portal;
-      sessionStorage.removeItem(PORTAL_KEY);
-      if (intent === "admin") {
-        setLocation("/dashboard");
-      } else {
-        setLocation("/learner/home");
+    let dest = defaultDest;
+
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) {
+        const { portal, at } = JSON.parse(raw);
+        if (portal === "admin" && Date.now() - at < TTL) {
+          dest = "/dashboard";
+        }
+        localStorage.removeItem(KEY);
       }
+    } catch {
+      localStorage.removeItem(KEY);
     }
-  }, [isLoaded, isSignedIn, portal, setLocation]);
+
+    setLocation(dest);
+  }, [isLoaded, isSignedIn, defaultDest, setLocation]);
 }

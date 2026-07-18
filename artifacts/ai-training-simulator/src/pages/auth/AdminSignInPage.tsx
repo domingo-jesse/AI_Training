@@ -1,17 +1,17 @@
 import { SignIn } from "@clerk/react";
 import { ShieldCheck } from "lucide-react";
-import { useSignedInRedirect } from "@/hooks/useSignedInRedirect";
+import { useMarkAdminPortal, usePortalRedirect } from "@/hooks/usePortalRedirect";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function AdminSignInPage() {
-  // If the user is already signed in and lands here, send them to the dashboard.
-  // Post-OAuth redirect is handled by Clerk via forceRedirectUrl below.
-  useSignedInRedirect(`${basePath}/dashboard`);
+  // Stamp localStorage BEFORE OAuth starts so it survives the redirect back.
+  useMarkAdminPortal();
+  // If already signed in, go to dashboard immediately.
+  usePortalRedirect("/dashboard");
 
   return (
     <div className="min-h-[100dvh] grid grid-cols-1 md:grid-cols-2 bg-background">
-      {/* Brand Panel */}
       <div className="hidden md:flex flex-col justify-between p-12 bg-sidebar border-r border-sidebar-border relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-violet-500/20 via-transparent to-transparent opacity-50" />
         <div className="relative z-10 flex items-center gap-3">
@@ -37,7 +37,6 @@ export default function AdminSignInPage() {
         </div>
       </div>
 
-      {/* Form Panel */}
       <div className="flex flex-col items-center justify-center p-6 sm:p-12 gap-6">
         <div className="flex items-center gap-2 md:hidden mb-2">
           <ShieldCheck className="w-5 h-5 text-violet-400" />
@@ -47,7 +46,6 @@ export default function AdminSignInPage() {
           routing="path"
           path={`${basePath}/admin/sign-in`}
           signUpUrl={`${basePath}/sign-up`}
-          forceRedirectUrl={`${basePath}/dashboard`}
         />
         <p className="text-sm text-muted-foreground">
           Learner?{" "}
