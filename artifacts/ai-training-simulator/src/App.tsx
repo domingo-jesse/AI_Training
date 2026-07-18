@@ -9,6 +9,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 import LandingPage from "@/pages/LandingPage";
 import SignInPage from "@/pages/auth/SignInPage";
+import AdminSignInPage from "@/pages/auth/AdminSignInPage";
 import SignUpPage from "@/pages/auth/SignUpPage";
 import DashboardPage from "@/pages/DashboardPage";
 import AssignmentsPage from "@/pages/admin/AssignmentsPage";
@@ -183,6 +184,7 @@ function ClerkProviderWithRoutes() {
         <Switch>
           <Route path="/" component={HomeRedirect} />
           <Route path="/sign-in/*?" component={SignInPage} />
+          <Route path="/admin/sign-in/*?" component={AdminSignInPage} />
           <Route path="/sign-up/*?" component={SignUpPage} />
           
           <Route path="/dashboard" component={DashboardPage} />
