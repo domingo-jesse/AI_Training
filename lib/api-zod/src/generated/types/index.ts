@@ -8,6 +8,12 @@
 
 export * from './errorResponse';
 export * from './healthStatus';
+export * from './organizationMembership';
+export * from './organizationMembershipRole';
+export * from './organizationMembershipStatus';
+export * from './orgMember';
+export * from './orgMemberRole';
+export * from './orgMemberStatus';
 export * from './syncUserInput';
 export * from './userProfile';
 export * from './userProfileRole';

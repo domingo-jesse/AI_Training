@@ -31,6 +31,7 @@ import LearnerProfilePage from "@/pages/learner/LearnerProfilePage";
 import LearnerSettingsPage from "@/pages/learner/LearnerSettingsPage";
 
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { OrganizationProvider } from "@/contexts/OrganizationContext";
 
 const queryClient = new QueryClient();
 
@@ -178,6 +179,7 @@ function ClerkProviderWithRoutes() {
     >
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
+        <OrganizationProvider>
         <Switch>
           <Route path="/" component={HomeRedirect} />
           <Route path="/sign-in/*?" component={SignInPage} />
@@ -203,6 +205,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/learner/profile" component={LearnerProfilePage} />
           <Route path="/learner/settings" component={LearnerSettingsPage} />
         </Switch>
+        </OrganizationProvider>
       </QueryClientProvider>
     </ClerkProvider>
   );

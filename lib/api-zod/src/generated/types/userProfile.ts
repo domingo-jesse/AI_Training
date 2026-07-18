@@ -8,19 +8,23 @@
 import type { UserProfileRole } from './userProfileRole';
 
 export interface UserProfile {
-  id: string;
-  clerkId: string;
-  email: string;
+  userId: number;
   /** @nullable */
-  name?: string | null;
+  id?: string | null;
+  /** @nullable */
+  email?: string | null;
+  name: string;
   /** @nullable */
   username?: string | null;
   role: UserProfileRole;
   /** @nullable */
   team?: string | null;
   /** @nullable */
-  organizationId?: string | null;
-  authProvider: string;
-  isActive: boolean;
-  createdAt: string;
+  organizationId?: number | null;
+  /** @nullable */
+  authProvider?: string | null;
+  /** @nullable */
+  isActive?: boolean | null;
+  /** @nullable */
+  createdAt?: string | null;
 }

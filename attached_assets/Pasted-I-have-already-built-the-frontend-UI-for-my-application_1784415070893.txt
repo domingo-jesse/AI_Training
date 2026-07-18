@@ -1,0 +1,390 @@
+I have already built the frontend UI for my application, NexusAI, an AI-powered training and assessment platform.
+
+IMPORTANT:
+Do NOT redesign, replace, or significantly change my existing UI, navigation, styling, layouts, or page structure. The frontend already looks the way I want it.
+
+My goal now is to begin converting the existing frontend from a mostly static/mock application into a functional full-stack application backed by Supabase.
+
+Before making changes, inspect the existing codebase and reuse the current components, pages, routes, and architecture wherever possible.
+
+TECHNOLOGY
+
+Frontend:
+- React
+- TypeScript
+
+Backend:
+- Node.js / Express if already present in the project
+
+Database / Authentication:
+- Supabase
+- PostgreSQL
+- Supabase Auth
+
+==================================================
+1. CONNECT THE APPLICATION TO SUPABASE
+==================================================
+
+Install and configure:
+
+@supabase/supabase-js
+
+Create a reusable Supabase client, preferably:
+
+client/src/lib/supabase.ts
+
+Use environment variables:
+
+VITE_SUPABASE_URL
+VITE_SUPABASE_PUBLISHABLE_KEY
+
+Do not hard-code credentials.
+
+Never expose a Supabase secret key or service-role key in frontend/client-side code.
+
+If privileged server-side Supabase access is eventually required, it must only exist on the Node.js backend using server-side environment variables.
+
+==================================================
+2. CREATE THE CORE MULTI-TENANT DATA MODEL
+==================================================
+
+This application is organization-based.
+
+A user may belong to MULTIPLE organizations and may have a DIFFERENT role in each organization.
+
+DO NOT store one global application role on the user.
+
+For example:
+
+Jesse:
+- Admin at Organization A
+- Learner at Organization B
+
+Create or prepare SQL migrations for these initial tables:
+
+PROFILES
+
+- id UUID primary key referencing auth.users(id)
+- email
+- first_name
+- last_name
+- avatar_url nullable
+- created_at
+
+ORGANIZATIONS
+
+- id UUID primary key
+- name
+- slug unique
+- logo_url nullable
+- created_at
+
+ORGANIZATION_MEMBERSHIPS
+
+- id UUID primary key
+- organization_id foreign key
+- user_id foreign key
+- role
+- status
+- created_at
+
+Valid roles:
+
+owner
+admin
+manager
+learner
+
+Valid membership status should include:
+
+active
+inactive
+invited
+
+Prevent duplicate memberships between the same user and organization.
+
+Add appropriate foreign keys, constraints, and indexes.
+
+Do not destructively modify existing Supabase tables without first identifying and explaining what already exists.
+
+If existing tables can be reused or migrated safely, prefer that instead of unnecessarily duplicating them.
+
+==================================================
+3. IMPLEMENT ORGANIZATION CONTEXT
+==================================================
+
+The application must always operate inside an organization/workspace context.
+
+After authentication:
+
+1. Determine the authenticated user.
+2. Load their profile.
+3. Load organizations where they have an active membership.
+4. Determine their role separately for each organization.
+
+If the user belongs to one organization:
+
+Automatically enter that organization.
+
+If the user belongs to multiple organizations:
+
+Allow them to select or switch organizations.
+
+Maintain a current organization context containing at minimum:
+
+organization_id
+organization_name
+organization_slug
+current_user_role
+
+All organization-specific queries must be scoped to the currently selected organization.
+
+Never query or display data belonging to another organization.
+
+==================================================
+4. REPLACE HARD-CODED USER INFORMATION
+==================================================
+
+The existing sidebar currently displays user information such as:
+
+Jesse Domingo
+Admin
+
+Remove hard-coded user identity and role information.
+
+Instead:
+
+Use Supabase Auth to determine the authenticated user.
+
+Load their profile from profiles.
+
+Load their role from organization_memberships for the CURRENT organization.
+
+Display dynamically:
+
+first_name + last_name
+current organization role
+avatar if available
+
+Preserve the exact existing sidebar design.
+
+Add proper:
+
+loading states
+error states
+fallback states
+
+==================================================
+5. MAKE ACCOUNT MANAGEMENT THE FIRST FUNCTIONAL FEATURE
+==================================================
+
+Do NOT attempt to make every page functional at once.
+
+The first complete database-backed feature should be Account Management.
+
+When an authorized admin/owner/manager opens Account Management:
+
+Load ONLY users who belong to the currently selected organization.
+
+Use:
+
+organization_memberships
+
+joined with:
+
+profiles
+
+Display real database information including:
+
+Name
+Email
+Role
+Membership Status
+Created/Joined Date
+
+Do not use mock data.
+
+Do not display users belonging only to other organizations.
+
+Preserve the existing Account Management UI as much as possible.
+
+If the existing page contains mock data, replace the mock data source with Supabase data rather than rebuilding the page.
+
+Add:
+
+loading state
+empty state
+error state
+
+An "Invite User" button may remain present, but do not implement the invitation system yet unless one already exists.
+
+==================================================
+6. ROW LEVEL SECURITY
+==================================================
+
+Security is extremely important because this is a multi-tenant SaaS application.
+
+Enable or prepare Row Level Security policies for exposed public tables.
+
+The database must enforce organization isolation.
+
+A user must never be able to access another organization's data simply by changing:
+
+a URL
+an organization ID
+a request parameter
+frontend state
+
+Implement or generate RLS policies so that:
+
+- Users can access their own appropriate profile information.
+- Users can see organizations where they have active membership.
+- Users can see their own memberships.
+- Organization members can only access data allowed within organizations they belong to.
+- Admin/owner/manager access is determined from organization_memberships.
+- Learners cannot access organization administration data.
+- Users cannot access data from organizations where they have no membership.
+
+Do not rely only on frontend role checks.
+
+Frontend authorization is for UX.
+
+Database/backend authorization is for security.
+
+Before executing potentially destructive SQL or RLS changes, explain what will change.
+
+==================================================
+7. ARCHITECTURE
+==================================================
+
+Keep the application maintainable.
+
+Use reusable services/hooks where appropriate rather than putting Supabase queries directly throughout UI components.
+
+A preferred structure could include:
+
+client/src/lib/supabase.ts
+
+client/src/services/
+  authService.ts
+  organizationService.ts
+  accountService.ts
+
+client/src/hooks/
+  useAuth.ts
+  useOrganization.ts
+
+or an equivalent clean architecture that fits the existing project.
+
+Do not restructure working code unnecessarily.
+
+For simple authenticated reads protected by RLS, React may communicate directly with Supabase.
+
+Use the Node.js backend for future privileged or complex operations such as:
+
+- AI generation
+- AI grading
+- user invitations
+- organization creation
+- bulk administrative actions
+- privileged database operations
+
+Never expose privileged credentials to React.
+
+==================================================
+8. DO NOT BUILD THESE FEATURES YET
+==================================================
+
+Do not attempt to fully implement:
+
+Module Builder
+Assignments
+Grading Center
+Progress Tracking
+AI Interviewer
+AI grading
+Analytics
+
+Keep their existing UI/pages intact.
+
+We will connect those features one at a time after the foundation works.
+
+Do not delete existing work on these pages.
+
+==================================================
+9. SUCCESS CRITERIA FOR THIS PHASE
+==================================================
+
+At the end of this implementation I should be able to:
+
+1. Run the application normally.
+
+2. Connect successfully to Supabase.
+
+3. Authenticate or identify the current authenticated Supabase user.
+
+4. Load that user's real profile.
+
+5. Determine which organizations the user belongs to.
+
+6. Determine the user's role specifically within the selected organization.
+
+7. Display the real user's name and organization role in the existing sidebar instead of hard-coded values.
+
+8. Open Account Management and see real users/memberships belonging ONLY to the current organization.
+
+9. Verify that organization data is isolated through RLS/security policies.
+
+10. Keep the existing NexusAI visual design essentially unchanged.
+
+==================================================
+IMPLEMENTATION APPROACH
+==================================================
+
+Work incrementally.
+
+First inspect the existing project and tell me:
+
+- What frontend/backend architecture currently exists
+- What is currently mocked or hard-coded
+- Whether Supabase is already partially configured
+- What database/auth code already exists
+- What changes you plan to make
+
+Then implement the foundation in small logical steps.
+
+Do not rewrite the entire application.
+
+Do not create duplicate systems if functionality already exists.
+
+Do not make unrelated UI changes.
+
+Do not attempt to implement the entire product in one pass.
+
+Prioritize getting this flow working correctly:
+
+LOGIN / AUTHENTICATED USER
+        ↓
+PROFILE
+        ↓
+ORGANIZATION MEMBERSHIP
+        ↓
+SELECTED ORGANIZATION
+        ↓
+ROLE WITHIN THAT ORGANIZATION
+        ↓
+CORRECT PORTAL / PERMISSIONS
+        ↓
+REAL ACCOUNT MANAGEMENT DATA
+
+Once this flow is working and tested, stop and summarize:
+
+- What was implemented
+- What database tables/migrations were created
+- What environment variables I need to configure
+- What SQL I need to run manually, if any
+- How I can test the functionality
+- Any security/RLS considerations
+- What the recommended next implementation step is
+
+Do not proceed to building all remaining features automatically.

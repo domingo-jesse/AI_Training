@@ -28,17 +28,17 @@ export const GetHealthResponse = zod.object({
  * @summary Get current authenticated user profile
  */
 export const GetMeResponse = zod.object({
-  "id": zod.string(),
-  "clerkId": zod.string(),
-  "email": zod.string(),
-  "name": zod.string().nullish(),
+  "userId": zod.number(),
+  "id": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "name": zod.string(),
   "username": zod.string().nullish(),
   "role": zod.enum(['admin', 'learner', 'developer']),
   "team": zod.string().nullish(),
-  "organizationId": zod.string().nullish(),
-  "authProvider": zod.string(),
-  "isActive": zod.boolean(),
-  "createdAt": zod.string()
+  "organizationId": zod.number().nullish(),
+  "authProvider": zod.string().nullish(),
+  "isActive": zod.boolean().nullish(),
+  "createdAt": zod.string().nullish()
 })
 
 
@@ -52,17 +52,51 @@ export const SyncUserBody = zod.object({
 })
 
 export const SyncUserResponse = zod.object({
-  "id": zod.string(),
-  "clerkId": zod.string(),
-  "email": zod.string(),
-  "name": zod.string().nullish(),
+  "userId": zod.number(),
+  "id": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "name": zod.string(),
   "username": zod.string().nullish(),
   "role": zod.enum(['admin', 'learner', 'developer']),
   "team": zod.string().nullish(),
-  "organizationId": zod.string().nullish(),
-  "authProvider": zod.string(),
-  "isActive": zod.boolean(),
+  "organizationId": zod.number().nullish(),
+  "authProvider": zod.string().nullish(),
+  "isActive": zod.boolean().nullish(),
+  "createdAt": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get organizations the current user belongs to (with their role in each)
+ */
+export const GetMyOrganizationsResponseItem = zod.object({
+  "membershipId": zod.string(),
+  "organizationId": zod.number(),
+  "organizationName": zod.string(),
+  "role": zod.enum(['owner', 'admin', 'manager', 'learner']),
+  "status": zod.enum(['active', 'inactive', 'invited']),
   "createdAt": zod.string()
 })
+export const GetMyOrganizationsResponse = zod.array(GetMyOrganizationsResponseItem)
+
+
+/**
+ * @summary Get all members of an organization (admin/owner/manager only)
+ */
+export const GetOrgMembersParams = zod.object({
+  "orgId": zod.coerce.number()
+})
+
+export const GetOrgMembersResponseItem = zod.object({
+  "membershipId": zod.string(),
+  "userId": zod.number(),
+  "name": zod.string(),
+  "email": zod.string().nullish(),
+  "role": zod.enum(['owner', 'admin', 'manager', 'learner']),
+  "status": zod.enum(['active', 'inactive', 'invited']),
+  "joinedAt": zod.string(),
+  "isActive": zod.boolean()
+})
+export const GetOrgMembersResponse = zod.array(GetOrgMembersResponseItem)
 
 

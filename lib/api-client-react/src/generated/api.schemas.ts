@@ -23,21 +23,25 @@ export const UserProfileRole = {
 } as const;
 
 export interface UserProfile {
-  id: string;
-  clerkId: string;
-  email: string;
+  userId: number;
   /** @nullable */
-  name?: string | null;
+  id?: string | null;
+  /** @nullable */
+  email?: string | null;
+  name: string;
   /** @nullable */
   username?: string | null;
   role: UserProfileRole;
   /** @nullable */
   team?: string | null;
   /** @nullable */
-  organizationId?: string | null;
-  authProvider: string;
-  isActive: boolean;
-  createdAt: string;
+  organizationId?: number | null;
+  /** @nullable */
+  authProvider?: string | null;
+  /** @nullable */
+  isActive?: boolean | null;
+  /** @nullable */
+  createdAt?: string | null;
 }
 
 export interface SyncUserInput {
@@ -45,5 +49,64 @@ export interface SyncUserInput {
   /** @nullable */
   name?: string | null;
   authProvider?: string;
+}
+
+export type OrganizationMembershipRole = typeof OrganizationMembershipRole[keyof typeof OrganizationMembershipRole];
+
+
+export const OrganizationMembershipRole = {
+  owner: 'owner',
+  admin: 'admin',
+  manager: 'manager',
+  learner: 'learner',
+} as const;
+
+export type OrganizationMembershipStatus = typeof OrganizationMembershipStatus[keyof typeof OrganizationMembershipStatus];
+
+
+export const OrganizationMembershipStatus = {
+  active: 'active',
+  inactive: 'inactive',
+  invited: 'invited',
+} as const;
+
+export interface OrganizationMembership {
+  membershipId: string;
+  organizationId: number;
+  organizationName: string;
+  role: OrganizationMembershipRole;
+  status: OrganizationMembershipStatus;
+  createdAt: string;
+}
+
+export type OrgMemberRole = typeof OrgMemberRole[keyof typeof OrgMemberRole];
+
+
+export const OrgMemberRole = {
+  owner: 'owner',
+  admin: 'admin',
+  manager: 'manager',
+  learner: 'learner',
+} as const;
+
+export type OrgMemberStatus = typeof OrgMemberStatus[keyof typeof OrgMemberStatus];
+
+
+export const OrgMemberStatus = {
+  active: 'active',
+  inactive: 'inactive',
+  invited: 'invited',
+} as const;
+
+export interface OrgMember {
+  membershipId: string;
+  userId: number;
+  name: string;
+  /** @nullable */
+  email?: string | null;
+  role: OrgMemberRole;
+  status: OrgMemberStatus;
+  joinedAt: string;
+  isActive: boolean;
 }
 

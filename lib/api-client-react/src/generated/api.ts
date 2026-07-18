@@ -22,6 +22,8 @@ import type {
 import type {
   ErrorResponse,
   HealthStatus,
+  OrgMember,
+  OrganizationMembership,
   SyncUserInput,
   UserProfile
 } from './api.schemas';
@@ -354,4 +356,158 @@ export const useSyncUser = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getSyncUserMutationOptions(options));
     }
+
+export const getGetMyOrganizationsUrl = () => {
+
+
+
+
+  return `/api/organizations`
+}
+
+/**
+ * @summary Get organizations the current user belongs to (with their role in each)
+ */
+export const getMyOrganizations = async ( options?: RequestInit): Promise<OrganizationMembership[]> => {
+
+  return customFetch<OrganizationMembership[]>(getGetMyOrganizationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyOrganizationsQueryKey = () => {
+    return [
+    `/api/organizations`
+    ] as const;
+    }
+
+
+export const getGetMyOrganizationsQueryOptions = <TData = Awaited<ReturnType<typeof getMyOrganizations>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyOrganizations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyOrganizationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyOrganizations>>> = ({ signal }) => getMyOrganizations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyOrganizations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyOrganizationsQueryResult = NonNullable<Awaited<ReturnType<typeof getMyOrganizations>>>
+export type GetMyOrganizationsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get organizations the current user belongs to (with their role in each)
+ */
+
+export function useGetMyOrganizations<TData = Awaited<ReturnType<typeof getMyOrganizations>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyOrganizations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyOrganizationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetOrgMembersUrl = (orgId: number,) => {
+
+
+
+
+  return `/api/organizations/${orgId}/members`
+}
+
+/**
+ * @summary Get all members of an organization (admin/owner/manager only)
+ */
+export const getOrgMembers = async (orgId: number, options?: RequestInit): Promise<OrgMember[]> => {
+
+  return customFetch<OrgMember[]>(getGetOrgMembersUrl(orgId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOrgMembersQueryKey = (orgId: number,) => {
+    return [
+    `/api/organizations/${orgId}/members`
+    ] as const;
+    }
+
+
+export const getGetOrgMembersQueryOptions = <TData = Awaited<ReturnType<typeof getOrgMembers>>, TError = ErrorType<ErrorResponse>>(orgId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOrgMembers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOrgMembersQueryKey(orgId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOrgMembers>>> = ({ signal }) => getOrgMembers(orgId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: orgId !== null && orgId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOrgMembers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOrgMembersQueryResult = NonNullable<Awaited<ReturnType<typeof getOrgMembers>>>
+export type GetOrgMembersQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get all members of an organization (admin/owner/manager only)
+ */
+
+export function useGetOrgMembers<TData = Awaited<ReturnType<typeof getOrgMembers>>, TError = ErrorType<ErrorResponse>>(
+ orgId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOrgMembers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOrgMembersQueryOptions(orgId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

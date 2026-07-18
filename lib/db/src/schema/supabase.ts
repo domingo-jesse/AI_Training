@@ -621,6 +621,33 @@ export const moduleGenerationQuestions = pgTable("module_generation_questions", 
 			name: "module_generation_questions_run_id_fkey"
 		}).onDelete("cascade"),
 ]);
+export const organizationMemberships = pgTable("organization_memberships", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	organizationId: bigint("organization_id", { mode: "number" }).notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	userId: bigint("user_id", { mode: "number" }).notNull(),
+	role: text().notNull(),
+	status: text().default('active').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_org_memberships_org_id").using("btree", table.organizationId.asc().nullsLast().op("int8_ops")),
+	index("idx_org_memberships_user_id").using("btree", table.userId.asc().nullsLast().op("int8_ops")),
+	unique("organization_memberships_org_user_key").on(table.organizationId, table.userId),
+	foreignKey({
+		columns: [table.organizationId],
+		foreignColumns: [organizations.organizationId],
+		name: "organization_memberships_organization_id_fkey"
+	}).onDelete("cascade"),
+	foreignKey({
+		columns: [table.userId],
+		foreignColumns: [users.userId],
+		name: "organization_memberships_user_id_fkey"
+	}).onDelete("cascade"),
+	check("org_membership_role_check", sql`role = ANY (ARRAY['owner'::text, 'admin'::text, 'manager'::text, 'learner'::text])`),
+	check("org_membership_status_check", sql`status = ANY (ARRAY['active'::text, 'inactive'::text, 'invited'::text])`),
+]);
+
 export const learnerDashboardSummary = pgView("learner_dashboard_summary", {	userId: text("user_id"),
 	name: text(),
 	team: text(),
