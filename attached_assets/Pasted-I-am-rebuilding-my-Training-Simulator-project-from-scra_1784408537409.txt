@@ -1,0 +1,183 @@
+I am rebuilding my Training Simulator project from scratch. Please recreate it as a clean, production-ready web app while preserving the product behavior, workflows, and database concepts from my current Streamlit/Postgres prototype.
+
+Project goal:
+Build a role-based training simulator for organizations. Admins create and assign training modules; learners complete assigned scenario-based exercises; admins review submissions, use AI-assisted grading, track progress, and manage accounts. The app should be rebuilt cleanly with maintainable architecture, clear separation between UI, services, database access, authentication, and AI integrations.
+
+Core technology requirements:
+- Web app runnable on Replit.
+- Use Supabase/Postgres as the primary database; do not rely on local SQLite for production behavior.
+- Environment variables/secrets should drive configuration: DATABASE_URL or Supabase database URL, OPENAI_API_KEY, OPENAI_MODEL, Google OAuth credentials if enabled.
+- Keep the app secure enough for real users: hashed passwords with a modern algorithm, parameterized SQL/ORM queries, role-based access control, no secrets in code, safe error handling, audit logs, and organization-level data isolation.
+- Preserve or improve the existing app's responsive UI, admin dashboards, learner workspace, and grading workflows.
+
+Roles and permissions:
+- Admin users can manage modules, assignments, learners, grading, progress reports, accounts, database/debug tools when allowed, QA/testing tools, profile, and settings.
+- Learner users can see their home page, assigned modules, module workspace, progress/results, profile, and settings.
+- Developer/test accounts may see extra tools such as database tables, debug logs, and QA Test Center; regular users should not.
+- Every user belongs to an organization. All module, assignment, attempt, grading, and learner data must be scoped by organization.
+
+Authentication and account features:
+- Login page with email/username and password.
+- Account creation flow.
+- Optional Google OAuth support.
+- Profile page and settings page.
+- User records should include name, email, role, team, organization, auth provider, active/inactive status, username/password hash when applicable, and created/updated timestamps.
+
+Main admin features to rebuild:
+1. Admin Dashboard
+   - Overview metrics for learners, modules, assignments, submissions, completion status, and recent activity.
+   - Clear navigation to major admin areas.
+
+2. Assignment Management
+   - Create assignments by selecting modules and learners.
+   - Support due dates, active/inactive assignments, bulk assignment workflows, and assignment tracking records.
+   - Current assignments table with learner, team, module, due date, assigned date, active state, attempt count, last attempt, and status: Not Started, In Progress, Completed, or Overdue.
+   - Ability to filter learners/modules and avoid assigning archived modules.
+
+3. Submission Grading / Grading Center
+   - List submitted attempts needing review.
+   - Show learner responses, question-level scores, AI feedback, manual feedback, expected answers, grading criteria, and overall scores.
+   - Support grading statuses such as submitted, pending review, AI grading, AI graded pending review, approved, returned, and grading failed.
+   - Allow admins to approve grades, adjust scores, add feedback, regrade submissions, and control what learners can see.
+   - Store overall submission scores and question-level scores.
+   - Keep regrade history.
+
+4. Progress Tracking
+   - Track learners, teams, modules, completion rates, statuses, last activity, attempts, and scores.
+   - Provide filters and summary metrics.
+   - Include learner profiles, module assignments, and module progress records.
+
+5. Account Management
+   - Create admin and learner accounts.
+   - Edit users, teams, roles, status, and organization.
+   - Distinguish active and inactive learners.
+
+6. Module Builder
+   - Build modules manually and with AI assistance.
+   - Module fields should include title, category, difficulty, description, scenario ticket/context, role focus, test focus, learning objectives, content sections, estimated time/time limit, status, creator, organization, and timestamps.
+   - Questions should support:
+     - open_text
+     - multiple_choice
+     - ai_conversation
+   - Question fields should include order, question text, rationale, question type, options/choices, expected answer or answer guidance, scoring method, max points, keyword expected terms, LLM grading criteria, learner-visible feedback mode, AI conversation prompt, AI role/persona, evaluation focus, max learner responses, optional wrap-up instruction, and source generation run.
+   - Support module-level rubric criteria with criterion name, description, max points, and display order.
+   - Save modules as draft/existing/published/archived as appropriate.
+
+7. Manage Modules
+   - View module list with status and metadata.
+   - Edit modules and questions.
+   - Archive/unarchive or manage availability.
+   - Preserve generated module/question content.
+
+8. Database Tables / Debug Logs / QA Test Center
+   - Developer-only tools for inspecting public database tables, recent logs, and running QA checks.
+   - Do not expose these to regular admins or learners unless explicitly configured.
+
+Main learner features to rebuild:
+1. Learner Home
+   - Personalized overview of assigned modules, progress, due work, and results.
+
+2. Assigned Modules / Module Library
+   - List assigned modules and module details.
+   - Show module status, due date, completion state, and calls to action.
+
+3. Module Workspace
+   - Multi-step wizard flow:
+     1. Scenario Overview
+     2. Assessment Questions
+     3. Review and Submit
+   - Persist in-progress workspace state so learners can resume.
+   - Track started_at, updated_at, current step, answers JSON, action log JSON, submitted state, and timestamps.
+   - Questions must support open text, multiple choice, and AI conversation.
+   - AI conversation questions should simulate an in-role persona, keep responses concise, stay on topic, use OpenAI when OPENAI_API_KEY is configured, and provide safe local fallback responses when not configured.
+   - Limit AI conversation responses according to max_learner_responses, usually 3 or 4.
+   - Require all questions to be complete before final submission.
+   - Insert attempts on submission and record action logs.
+
+4. Progress & Results
+   - Show submitted/approved results based on admin visibility settings.
+   - Visibility flags should independently control whether learners can see results, overall score, question scores, feedback, expected answers, grading criteria, AI review, and their own responses.
+   - Format durations and statuses clearly.
+
+AI behavior to preserve:
+- Module generation:
+  - Generate complete module drafts from an admin prompt.
+  - Return structured JSON with title, description, scenario, category, role focus, test focus, learning objectives, content sections, difficulty, time limit, questions, and overall rubric.
+  - Generate exactly the requested number of questions unless zero is requested.
+  - Support fallback draft generation when OPENAI_API_KEY is missing.
+- Module preview generation:
+  - Generate preview content from module title/category/difficulty/description/role focus/test focus/objectives/constraints/completion requirements/question count.
+- AI grading criteria:
+  - Create scoring instructions and rubric criteria for each question based on module context, question text, question type, expected answer, answer choices, and max points.
+  - Use Accuracy, Completeness, and Judgment-style criteria as the default fallback.
+- Submission grading:
+  - Grade attempts through a grading service that stores overall and question-level results.
+  - Support manual, keyword, and LLM/AI review scoring modes.
+  - Preserve conversation transcript evaluation for ai_conversation questions.
+
+Database entities to include:
+- organizations
+- users
+- modules
+- module_questions
+- module_rubric_criteria
+- investigation_actions
+- attempts
+- action_logs
+- submission_scores
+- submission_question_scores
+- submission_regrade_history
+- assignments
+- assignment_workspace_state
+- learner_profiles
+- module_assignments
+- module_progress
+- module_generation_runs
+- module_generation_questions
+- question_conversation_messages
+
+Important database behavior:
+- Use migrations, not ad-hoc schema changes inside request handlers.
+- Use UUIDs or serial IDs consistently.
+- Include created_at and updated_at where useful.
+- Use foreign keys and indexes for organization_id, user_id, module_id, assignment_id, and attempt_id.
+- Store JSON fields as JSONB in Postgres.
+- Keep backward-compatible data concepts from the prototype but clean up naming where appropriate.
+
+UX/UI requirements:
+- Clean role-specific navigation.
+- Admin pages: Dashboard, Assignment Management, Submission Grading, Progress Tracking, Account Management, Module Builder, Manage Modules, Database Tables, Debug Logs, QA Test Center, Profile, Settings.
+- Learner pages: Home, Assigned Modules, Module Workspace, Progress & Results, Profile, Settings; developer-only Database Tables and Debug Logs if allowed.
+- Reusable KPI cards, tables, filters, page headers, and status badges.
+- Tables should handle empty states gracefully.
+- Avoid visual flicker where possible; keep state stable between navigation/actions.
+- Use clear success/error messages.
+
+Seed/demo data:
+- Provide optional seed data for a default organization, sample admins/learners, sample modules, questions, assignments, learner profiles, module progress, attempts, and scores.
+- Include a safe way to clear seed data in development without deleting production data accidentally.
+
+Logging and diagnostics:
+- Centralized structured logging.
+- Log important events: authentication, assignment creation, submission, grading, regrading, approval, account changes, module generation, and errors.
+- Developer-only log viewer for recent logs and downloadable full logs.
+- Database debug info should verify configured Postgres connection without exposing secrets.
+
+Quality expectations:
+- Rebuild using a clean project structure.
+- Prefer service-layer functions for assignments, modules, grading, progress, users, auth, and AI.
+- Write tests for critical logic: permissions, assignment status, submission state, visibility flags, module/question validation, AI fallback behavior, and database repository functions.
+- Include README setup instructions for Replit, Supabase, environment variables, database migrations, seed data, and running tests.
+- Start by proposing the architecture, data model, and migration plan before coding.
+- After that, implement iteratively in small checkpoints and verify each workflow.
+
+Migration priority:
+1. Database schema and auth/roles/org isolation.
+2. Admin account/module/assignment basics.
+3. Learner assigned module workspace and submission flow.
+4. Grading center with manual grading.
+5. AI module generation, AI conversation, and AI grading.
+6. Progress/results visibility controls.
+7. Developer diagnostics, seed data, QA tools, polish, and tests.
+
+Please first generate a rebuild plan with folder structure, database schema/migrations, and milestone checklist. Then begin implementing the first milestone.
