@@ -1,11 +1,14 @@
 import { SignIn } from "@clerk/react";
 import { BookOpen } from "lucide-react";
-import { usePortalRedirect } from "@/hooks/usePortalRedirect";
+import { useSignedInRedirect } from "@/hooks/useSignedInRedirect";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function SignInPage() {
-  usePortalRedirect("learner");
+  // If the user is already signed in and lands here, send them home.
+  // Post-OAuth redirect is handled by Clerk via forceRedirectUrl below.
+  useSignedInRedirect(`${basePath}/learner/home`);
+
   return (
     <div className="min-h-[100dvh] grid grid-cols-1 md:grid-cols-2 bg-background">
       {/* Brand Panel */}
@@ -44,7 +47,7 @@ export default function SignInPage() {
           routing="path"
           path={`${basePath}/sign-in`}
           signUpUrl={`${basePath}/sign-up`}
-          fallbackRedirectUrl={`${basePath}/learner/home`}
+          forceRedirectUrl={`${basePath}/learner/home`}
         />
         <p className="text-sm text-muted-foreground">
           Admin?{" "}

@@ -1,11 +1,14 @@
 import { SignIn } from "@clerk/react";
 import { ShieldCheck } from "lucide-react";
-import { usePortalRedirect } from "@/hooks/usePortalRedirect";
+import { useSignedInRedirect } from "@/hooks/useSignedInRedirect";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function AdminSignInPage() {
-  usePortalRedirect("admin");
+  // If the user is already signed in and lands here, send them to the dashboard.
+  // Post-OAuth redirect is handled by Clerk via forceRedirectUrl below.
+  useSignedInRedirect(`${basePath}/dashboard`);
+
   return (
     <div className="min-h-[100dvh] grid grid-cols-1 md:grid-cols-2 bg-background">
       {/* Brand Panel */}
@@ -26,7 +29,7 @@ export default function AdminSignInPage() {
             Manage your training platform.
           </h1>
           <p className="text-sidebar-foreground/70 text-lg">
-            Build modules, track learner progress, review submissions, and manage your organisation — all in one place.
+            Build modules, manage learners, review submissions, and view analytics — all in one place.
           </p>
         </div>
         <div className="relative z-10 text-sm text-sidebar-foreground/40">
@@ -44,7 +47,7 @@ export default function AdminSignInPage() {
           routing="path"
           path={`${basePath}/admin/sign-in`}
           signUpUrl={`${basePath}/sign-up`}
-          fallbackRedirectUrl={`${basePath}/dashboard`}
+          forceRedirectUrl={`${basePath}/dashboard`}
         />
         <p className="text-sm text-muted-foreground">
           Learner?{" "}
