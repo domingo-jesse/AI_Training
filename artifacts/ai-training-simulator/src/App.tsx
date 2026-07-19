@@ -19,6 +19,7 @@ import AccountsPage from "@/pages/admin/AccountsPage";
 import ModuleBuilderPage from "@/pages/admin/ModuleBuilderPage";
 import ModulesPage from "@/pages/admin/ModulesPage";
 import AssignModulesPage from "@/pages/admin/AssignModulesPage";
+import GroupsPage from "@/pages/admin/GroupsPage";
 import ProfilePage from "@/pages/admin/ProfilePage";
 import SettingsPage from "@/pages/admin/SettingsPage";
 import DbTablesPage from "@/pages/admin/DbTablesPage";
@@ -196,6 +197,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/admin/module-builder" component={ModuleBuilderPage} />
           <Route path="/admin/modules" component={ModulesPage} />
           <Route path="/admin/assign-modules" component={AssignModulesPage} />
+          <Route path="/admin/groups" component={GroupsPage} />
           <Route path="/admin/profile" component={ProfilePage} />
           <Route path="/admin/settings" component={SettingsPage} />
           <Route path="/admin/db-tables" component={DbTablesPage} />

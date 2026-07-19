@@ -8,7 +8,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import {
   BarChart2, Users, CheckCircle2, Clock, AlertCircle, Star,
   BookOpen, Search, ChevronRight, ChevronLeft, User,
-  Circle, ArrowUpRight,
+  Circle, ArrowUpRight, Layers, ChevronDown, X,
 } from "lucide-react";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -53,6 +53,13 @@ interface Member {
   name: string;
   email: string | null;
   role: string;
+}
+
+interface Group {
+  groupId: number;
+  name: string;
+  color: string;
+  members: { userId: number }[];
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -112,15 +119,18 @@ export default function ProgressPage() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [modules,     setModules]     = useState<Module[]>([]);
   const [members,     setMembers]     = useState<Member[]>([]);
+  const [groups,      setGroups]      = useState<Group[]>([]);
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState<string | null>(null);
 
   // View state
-  const [tab,             setTab]             = useState<"modules" | "users">("modules");
-  const [moduleSearch,    setModuleSearch]    = useState("");
-  const [userSearch,      setUserSearch]      = useState("");
-  const [selectedModule,  setSelectedModule]  = useState<number | null>(null);
-  const [selectedUser,    setSelectedUser]    = useState<number | null>(null);
+  const [tab,              setTab]              = useState<"modules" | "users">("modules");
+  const [moduleSearch,     setModuleSearch]     = useState("");
+  const [userSearch,       setUserSearch]       = useState("");
+  const [selectedModule,   setSelectedModule]   = useState<number | null>(null);
+  const [selectedUser,     setSelectedUser]     = useState<number | null>(null);
+  const [groupFilter,      setGroupFilter]      = useState<number | null>(null);
+  const [groupDropdownOpen,setGroupDropdownOpen] = useState(false);
 
   // ── Data fetch ───────────────────────────────────────────────────────────
 
@@ -137,11 +147,13 @@ export default function ProgressPage() {
       fetch(`${base}/api/assignments?orgId=${orgId}`,            { credentials: "include", signal: ctrl.signal }).then(r => r.ok ? r.json() : []).catch(() => []),
       fetch(`${base}/api/modules?orgId=${orgId}`,                { credentials: "include", signal: ctrl.signal }).then(r => r.ok ? r.json() : []).catch(() => []),
       fetch(`${base}/api/organizations/${orgId}/members`,        { credentials: "include", signal: ctrl.signal }).then(r => r.ok ? r.json() : []).catch(() => []),
-    ]).then(([prog, asgn, mods, mem]) => {
+      fetch(`${base}/api/groups?orgId=${orgId}`,                 { credentials: "include", signal: ctrl.signal }).then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([prog, asgn, mods, mem, grps]) => {
       setAttempts(Array.isArray(prog?.attempts) ? prog.attempts : []);
       setAssignments(Array.isArray(asgn) ? asgn : []);
       setModules(Array.isArray(mods) ? mods : []);
       setMembers(Array.isArray(mem) ? mem.filter((u: Member) => u.role === "learner") : []);
+      setGroups(Array.isArray(grps) ? grps : []);
     }).catch(e => {
       if (e.name !== "AbortError") setError(e.message ?? "Failed to load progress");
       else setError("Request timed out. Please refresh.");
@@ -534,12 +546,21 @@ export default function ProgressPage() {
   // Main dashboard (tabs)
   // ══════════════════════════════════════════════════════════════════════════
 
+  const activeGroup = groupFilter ? groups.find(g => g.groupId === groupFilter) ?? null : null;
+  const groupMemberIds = activeGroup ? new Set(activeGroup.members.map(m => m.userId)) : null;
+
   const filteredModules = moduleStats.filter(m => {
     const q = moduleSearch.toLowerCase();
+    if (groupMemberIds) {
+      // Show module only if at least one group member is assigned to it
+      const hasGroupMember = m.assigned.some(a => groupMemberIds.has(a.learnerId));
+      if (!hasGroupMember) return false;
+    }
     return !q || m.title.toLowerCase().includes(q) || m.category.toLowerCase().includes(q);
   });
 
   const filteredUsers = userStats.filter(u => {
+    if (groupMemberIds && !groupMemberIds.has(u.userId)) return false;
     const q = userSearch.toLowerCase();
     return !q || u.name.toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q);
   });
@@ -561,21 +582,80 @@ export default function ProgressPage() {
         <Stat icon={Star}         label="Avg Score"       value={orgAvgScore != null ? orgAvgScore : "—"}                  color="text-violet-400" />
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-5 p-1 bg-muted rounded-xl w-fit">
-        {(["modules", "users"] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => { setTab(t); setSelectedModule(null); setSelectedUser(null); }}
-            className={`px-5 py-2 rounded-lg text-sm font-medium transition-all capitalize ${
-              tab === t
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t === "modules" ? "By Module" : "By User"}
-          </button>
-        ))}
+      {/* Tabs + group filter */}
+      <div className="flex items-center gap-3 mb-5 flex-wrap">
+        <div className="flex gap-1 p-1 bg-muted rounded-xl">
+          {(["modules", "users"] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => { setTab(t); setSelectedModule(null); setSelectedUser(null); }}
+              className={`px-5 py-2 rounded-lg text-sm font-medium transition-all capitalize ${
+                tab === t
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t === "modules" ? "By Module" : "By User"}
+            </button>
+          ))}
+        </div>
+
+        {/* Group filter */}
+        {groups.length > 0 && (
+          <div className="relative">
+            <button
+              onClick={() => setGroupDropdownOpen(o => !o)}
+              className={`flex items-center gap-1.5 h-10 px-3 rounded-lg border text-sm transition-all ${
+                activeGroup
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-input text-muted-foreground hover:text-foreground hover:border-border"
+              }`}
+            >
+              {activeGroup ? (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: activeGroup.color }} />
+                  <span className="max-w-32 truncate">{activeGroup.name}</span>
+                  <button
+                    onClick={e => { e.stopPropagation(); setGroupFilter(null); setGroupDropdownOpen(false); }}
+                    className="ml-0.5 hover:text-foreground"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              ) : (
+                <><Layers className="w-3.5 h-3.5" /> Filter by group <ChevronDown className="w-3.5 h-3.5 ml-0.5" /></>
+              )}
+            </button>
+            {groupDropdownOpen && (
+              <div className="absolute left-0 top-full mt-1 z-20 w-52 bg-popover border border-border rounded-lg shadow-lg py-1 text-sm">
+                <button
+                  onClick={() => { setGroupFilter(null); setGroupDropdownOpen(false); }}
+                  className={`w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2 ${!groupFilter ? "text-primary font-medium" : "text-foreground"}`}
+                >
+                  All learners
+                </button>
+                <div className="border-t border-border my-1" />
+                {groups.map(g => (
+                  <button
+                    key={g.groupId}
+                    onClick={() => { setGroupFilter(g.groupId); setGroupDropdownOpen(false); }}
+                    className={`w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2 ${groupFilter === g.groupId ? "text-primary font-medium" : "text-foreground"}`}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
+                    <span className="truncate flex-1">{g.name}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">{g.members.length}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeGroup && (
+          <span className="text-sm text-muted-foreground">
+            Showing results for <span className="font-medium" style={{ color: activeGroup.color }}>{activeGroup.name}</span>
+          </span>
+        )}
       </div>
 
       {/* ── MODULES TAB ── */}

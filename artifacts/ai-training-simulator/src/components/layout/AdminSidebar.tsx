@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { Users, FileText, CheckSquare, BarChart, Settings, User, LayoutDashboard, Layers, BookOpen, UserPlus, Database, Terminal, Beaker, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Users, FileText, CheckSquare, BarChart, Settings, User, LayoutDashboard, Layers, BookOpen, UserPlus, Database, Terminal, Beaker, ChevronLeft, ChevronRight, X, Tag } from 'lucide-react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -13,6 +13,7 @@ const navItems = [
   { name: 'Grading Center',     path: '/admin/grading',        icon: FileText },
   { name: 'Progress Tracking',  path: '/admin/progress',       icon: BarChart },
   { name: 'Account Management', path: '/admin/accounts',       icon: Users },
+  { name: 'Groups',             path: '/admin/groups',         icon: Tag },
   { name: 'Profile',            path: '/admin/profile',        icon: User },
   { name: 'Settings',           path: '/admin/settings',       icon: Settings },
 ];

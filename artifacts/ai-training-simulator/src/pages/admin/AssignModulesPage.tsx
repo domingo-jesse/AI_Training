@@ -7,6 +7,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import {
   Search, UserPlus, UserMinus, BookOpen, Users,
   CheckCircle2, AlertCircle, Loader2, Calendar, ChevronLeft, Check, X,
+  ChevronDown, Layers,
 } from "lucide-react";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -31,6 +32,13 @@ interface Assignment {
   moduleId: number;
   learnerId: number;
   dueDate: string | null;
+}
+
+interface Group {
+  groupId: number;
+  name: string;
+  color: string;
+  members: { userId: number }[];
 }
 
 const DIFF_COLORS: Record<string, string> = {
@@ -58,10 +66,13 @@ export default function AssignModulesPage() {
   const [modules, setModules] = useState<Module[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedModuleId, setSelectedModuleId] = useState<number | null>(preselectedId);
   const [moduleSearch, setModuleSearch] = useState("");
   const [learnerSearch, setLearnerSearch] = useState("");
+  const [groupFilter, setGroupFilter] = useState<number | null>(null);
+  const [groupDropdownOpen, setGroupDropdownOpen] = useState(false);
 
   // Selection: learnerId → due date string (empty = no due date)
   const [selection, setSelection] = useState<Map<number, string>>(new Map());
@@ -82,10 +93,12 @@ export default function AssignModulesPage() {
       fetch(`${base}/api/modules?orgId=${orgId}`, { credentials: "include" }).then(r => r.json()).catch(() => []),
       fetch(`${base}/api/organizations/${orgId}/members`, { credentials: "include" }).then(r => r.json()).catch(() => []),
       fetch(`${base}/api/assignments?orgId=${orgId}`, { credentials: "include" }).then(r => r.json()).catch(() => []),
-    ]).then(([mods, mem, asgn]) => {
+      fetch(`${base}/api/groups?orgId=${orgId}`, { credentials: "include" }).then(r => r.json()).catch(() => []),
+    ]).then(([mods, mem, asgn, grps]) => {
       setModules(Array.isArray(mods) ? mods : []);
       setMembers(Array.isArray(mem) ? mem.filter((u: Member) => u.role === "learner") : []);
       setAssignments(Array.isArray(asgn) ? asgn : []);
+      setGroups(Array.isArray(grps) ? grps : []);
     }).finally(() => setLoading(false));
   }, [orgId]);
 
@@ -102,8 +115,12 @@ export default function AssignModulesPage() {
         return !q || m.title.toLowerCase().includes(q) || m.category.toLowerCase().includes(q);
       });
 
+  const activeGroup = groupFilter ? groups.find(g => g.groupId === groupFilter) ?? null : null;
+  const groupMemberIds = activeGroup ? new Set(activeGroup.members.map(m => m.userId)) : null;
+
   const filteredLearners = members.filter(m => {
     const q = learnerSearch.toLowerCase();
+    if (groupMemberIds && !groupMemberIds.has(m.userId)) return false;
     return !q || m.name.toLowerCase().includes(q) || (m.email ?? "").toLowerCase().includes(q);
   });
 
@@ -298,9 +315,9 @@ export default function AssignModulesPage() {
                 </p>
               </div>
 
-              {/* Search + select-all */}
-              <div className="flex items-center gap-2 mb-3">
-                <div className="relative flex-1">
+              {/* Search + group filter + select-all */}
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <div className="relative flex-1 min-w-36">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     value={learnerSearch}
@@ -309,6 +326,53 @@ export default function AssignModulesPage() {
                     className="pl-9"
                   />
                 </div>
+
+                {/* Group filter dropdown */}
+                {groups.length > 0 && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setGroupDropdownOpen(o => !o)}
+                      className={`flex items-center gap-1.5 h-10 px-3 rounded-md border text-sm transition-all ${
+                        activeGroup
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-input text-muted-foreground hover:text-foreground hover:border-border"
+                      }`}
+                    >
+                      {activeGroup ? (
+                        <>
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: activeGroup.color }} />
+                          <span className="max-w-24 truncate">{activeGroup.name}</span>
+                        </>
+                      ) : (
+                        <><Layers className="w-3.5 h-3.5" /> Group</>
+                      )}
+                      <ChevronDown className="w-3.5 h-3.5 ml-0.5" />
+                    </button>
+                    {groupDropdownOpen && (
+                      <div className="absolute right-0 top-full mt-1 z-20 w-52 bg-popover border border-border rounded-lg shadow-lg py-1 text-sm">
+                        <button
+                          onClick={() => { setGroupFilter(null); setGroupDropdownOpen(false); }}
+                          className={`w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2 ${!groupFilter ? "text-primary font-medium" : "text-foreground"}`}
+                        >
+                          All learners
+                        </button>
+                        <div className="border-t border-border my-1" />
+                        {groups.map(g => (
+                          <button
+                            key={g.groupId}
+                            onClick={() => { setGroupFilter(g.groupId); setGroupDropdownOpen(false); }}
+                            className={`w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2 ${groupFilter === g.groupId ? "text-primary font-medium" : "text-foreground"}`}
+                          >
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
+                            <span className="truncate flex-1">{g.name}</span>
+                            <span className="text-xs text-muted-foreground shrink-0">{g.members.length}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {unassignedFiltered.length > 0 && (
                   <button
                     onClick={allVisibleSelected ? clearSelection : selectAll}
@@ -318,6 +382,19 @@ export default function AssignModulesPage() {
                   </button>
                 )}
               </div>
+
+              {/* Active group banner */}
+              {activeGroup && (
+                <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: activeGroup.color + "18", border: `1px solid ${activeGroup.color}40` }}>
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: activeGroup.color }} />
+                  <span style={{ color: activeGroup.color }}>
+                    Showing {filteredLearners.length} learner{filteredLearners.length !== 1 ? "s" : ""} in <strong>{activeGroup.name}</strong>
+                  </span>
+                  <button onClick={() => setGroupFilter(null)} className="ml-auto" style={{ color: activeGroup.color }}>
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
 
               {/* Learner rows */}
               <div className="flex-1 overflow-y-auto space-y-2 pr-1 pb-2">

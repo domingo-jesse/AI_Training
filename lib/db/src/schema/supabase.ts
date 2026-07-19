@@ -648,6 +648,41 @@ export const organizationMemberships = pgTable("organization_memberships", {
 	check("org_membership_status_check", sql`status = ANY (ARRAY['active'::text, 'inactive'::text, 'invited'::text])`),
 ]);
 
+export const groups = pgTable("groups", {
+	groupId: bigint("group_id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity({ name: "groups_group_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
+	orgId: bigint("org_id", { mode: "number" }).notNull(),
+	name: text().notNull(),
+	color: text().notNull().default('#6366f1'),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_groups_org_id").using("btree", table.orgId.asc().nullsLast().op("int8_ops")),
+	foreignKey({
+		columns: [table.orgId],
+		foreignColumns: [organizations.organizationId],
+		name: "groups_org_id_fkey"
+	}).onDelete("cascade"),
+]);
+
+export const userGroups = pgTable("user_groups", {
+	userGroupId: bigint("user_group_id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity({ name: "user_groups_user_group_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
+	groupId: bigint("group_id", { mode: "number" }).notNull(),
+	userId: bigint("user_id", { mode: "number" }).notNull(),
+}, (table) => [
+	index("idx_user_groups_group_id").using("btree", table.groupId.asc().nullsLast().op("int8_ops")),
+	index("idx_user_groups_user_id").using("btree", table.userId.asc().nullsLast().op("int8_ops")),
+	foreignKey({
+		columns: [table.groupId],
+		foreignColumns: [groups.groupId],
+		name: "user_groups_group_id_fkey"
+	}).onDelete("cascade"),
+	foreignKey({
+		columns: [table.userId],
+		foreignColumns: [users.userId],
+		name: "user_groups_user_id_fkey"
+	}).onDelete("cascade"),
+	unique("user_groups_group_id_user_id_key").on(table.groupId, table.userId),
+]);
+
 export const learnerDashboardSummary = pgView("learner_dashboard_summary", {	userId: text("user_id"),
 	name: text(),
 	team: text(),

@@ -6,6 +6,7 @@ import modulesRouter from "./modules";
 import assignmentsRouter from "./assignments";
 import attemptsRouter from "./attempts";
 import adminUsersRouter from "./adminUsers";
+import groupsRouter from "./groups";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(modulesRouter);
 router.use(assignmentsRouter);
 router.use(attemptsRouter);
 router.use(adminUsersRouter);
+router.use(groupsRouter);
 
 export default router;
