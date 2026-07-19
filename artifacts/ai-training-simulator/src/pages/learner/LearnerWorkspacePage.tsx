@@ -101,6 +101,7 @@ export default function LearnerWorkspacePage() {
 
   const startAttempt = async () => {
     if (!moduleId || !orgId) { setSubmitError("Missing module or organization context."); return; }
+    if (questions.length === 0) { setSubmitError("This module has no questions yet. Contact your admin."); return; }
     setSubmitting(true);
     setSubmitError(null);
     try {
