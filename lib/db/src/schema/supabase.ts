@@ -701,6 +701,17 @@ export const orgSettings = pgTable("org_settings", {
 	}).onDelete("cascade"),
 ]);
 
+export const systemLogs = pgTable("system_logs", {
+  logId: bigint("log_id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  level: text().notNull().default("info"),
+  category: text().notNull().default("general"),
+  message: text().notNull(),
+  metadata: jsonb(),
+  orgId: bigint("org_id", { mode: "number" }),
+  userId: text("user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+});
+
 export const learnerDashboardSummary = pgView("learner_dashboard_summary", {	userId: text("user_id"),
 	name: text(),
 	team: text(),

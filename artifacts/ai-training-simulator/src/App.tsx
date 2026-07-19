@@ -26,6 +26,9 @@ import DbTablesPage from "@/pages/admin/DbTablesPage";
 import DebugLogsPage from "@/pages/admin/DebugLogsPage";
 import QaCenterPage from "@/pages/admin/QaCenterPage";
 
+import OwnerDashboardPage from "@/pages/owner/OwnerDashboardPage";
+import OwnerOrgsPage from "@/pages/owner/OwnerOrgsPage";
+import OwnerLogsPage from "@/pages/owner/OwnerLogsPage";
 import LearnerHomePage from "@/pages/learner/LearnerHomePage";
 import LearnerModulesPage from "@/pages/learner/LearnerModulesPage";
 import LearnerWorkspacePage from "@/pages/learner/LearnerWorkspacePage";
@@ -204,6 +207,10 @@ function ClerkProviderWithRoutes() {
           <Route path="/admin/debug-logs" component={DebugLogsPage} />
           <Route path="/admin/qa-center" component={QaCenterPage} />
           
+          <Route path="/owner" component={OwnerDashboardPage} />
+          <Route path="/owner/orgs" component={OwnerOrgsPage} />
+          <Route path="/owner/logs" component={OwnerLogsPage} />
+
           <Route path="/learner/home" component={LearnerHomePage} />
           <Route path="/learner/modules" component={LearnerModulesPage} />
           <Route path="/learner/workspace" component={LearnerWorkspacePage} />
