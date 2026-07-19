@@ -97,21 +97,12 @@ export default function ModulesPage() {
   const [sort, setSort]             = useState<SortKey>("newest");
   const [sortOpen, setSortOpen]     = useState(false);
 
-  // Derived unique values
-  const categories = useMemo(
-    () => [...new Set(modules.map(m => m.category).filter(Boolean))].sort(),
-    [modules],
-  );
-
-  const [catFilter, setCat] = useState<string>("all");
-
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     let list = modules.filter(m => {
-      if (q && !m.title.toLowerCase().includes(q) && !m.category.toLowerCase().includes(q)) return false;
+      if (q && !m.title.toLowerCase().includes(q)) return false;
       if (statusFilter !== "all" && m.status !== statusFilter) return false;
       if (diffFilter   !== "all" && m.difficulty !== diffFilter) return false;
-      if (catFilter    !== "all" && m.category !== catFilter) return false;
       if (aiOnly && !m.llmScoringEnabled) return false;
       return true;
     });
@@ -130,12 +121,11 @@ export default function ModulesPage() {
     search !== "",
     statusFilter !== "all",
     diffFilter !== "all",
-    catFilter !== "all",
     aiOnly,
   ].filter(Boolean).length;
 
   const clearAll = () => {
-    setSearch(""); setStatus("all"); setDiff("all"); setCat("all"); setAiOnly(false);
+    setSearch(""); setStatus("all"); setDiff("all"); setAiOnly(false);
   };
 
   const handleDelete = async (moduleId: number, title: string) => {
@@ -176,7 +166,7 @@ export default function ModulesPage() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by title or category…"
+              placeholder="Search by title…"
               className="h-8 w-full pl-8 pr-8 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
             />
             {search && (
@@ -277,18 +267,6 @@ export default function ModulesPage() {
           </div>
         </div>
 
-        {/* Row 3: categories (only if >1 exist) */}
-        {categories.length > 1 && (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs text-muted-foreground w-16">Category</span>
-            <Chip active={catFilter === "all"} onClick={() => setCat("all")}>All</Chip>
-            {categories.map(cat => (
-              <Chip key={cat} active={catFilter === cat} onClick={() => setCat(cat)}>
-                {cat}
-              </Chip>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* ── Error ── */}
