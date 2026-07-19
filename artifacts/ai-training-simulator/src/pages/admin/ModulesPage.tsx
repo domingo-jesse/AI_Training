@@ -105,16 +105,31 @@ export default function ModulesPage() {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
+  // Treat anything that isn't "archived" as "active" regardless of legacy DB values
+  const isActive = (m: { status: string }) => m.status !== "archived";
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     let list = modules.filter(m => {
-      if (statusFilter === "all" && m.status === "archived") return false; // archived hidden from main list unless filtered
+      if (statusFilter === "archived") return m.status === "archived";
+      if (statusFilter === "active")   return isActive(m);
+      // "all" — exclude archived from main list (they appear in the section below)
+      if (m.status === "archived") return false;
       if (q && !m.title.toLowerCase().includes(q)) return false;
-      if (statusFilter !== "all" && m.status !== statusFilter) return false;
-      if (diffFilter   !== "all" && m.difficulty !== diffFilter) return false;
+      if (diffFilter !== "all" && m.difficulty !== diffFilter) return false;
       if (aiOnly && !m.llmScoringEnabled) return false;
       return true;
     });
+
+    // Apply search + difficulty filters for active/archived sub-filters too
+    if (statusFilter !== "all") {
+      list = list.filter(m => {
+        if (q && !m.title.toLowerCase().includes(q)) return false;
+        if (diffFilter !== "all" && m.difficulty !== diffFilter) return false;
+        if (aiOnly && !m.llmScoringEnabled) return false;
+        return true;
+      });
+    }
 
     return applySort(list);
   }, [modules, search, statusFilter, diffFilter, aiOnly, sort]);
