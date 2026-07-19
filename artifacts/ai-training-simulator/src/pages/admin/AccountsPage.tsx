@@ -10,6 +10,47 @@ import {
 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 
+/* ── Confirm dialog ── */
+function ConfirmDialog({
+  open, title, description, confirmLabel = "Confirm", danger = false,
+  onConfirm, onCancel,
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm mx-4 p-6">
+        <button onClick={onCancel} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors">
+          <X className="w-4 h-4" />
+        </button>
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-4 ${danger ? "bg-red-500/15" : "bg-primary/15"}`}>
+          <ShieldOff className={`w-5 h-5 ${danger ? "text-red-400" : "text-primary"}`} />
+        </div>
+        <h3 className="text-base font-semibold mb-1">{title}</h3>
+        <p className="text-sm text-muted-foreground mb-6">{description}</p>
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
+          <Button
+            size="sm"
+            className={danger ? "bg-red-500 hover:bg-red-600 text-white border-0" : ""}
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface AdminUser {
@@ -68,6 +109,7 @@ export default function AccountsPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState({ name: "", email: "", role: "learner" as Role });
   const [patchingId, setPatchingId] = useState<number | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<AdminUser | null>(null);
 
   const load = () => {
     if (!orgId) return;
@@ -164,6 +206,15 @@ export default function AccountsPage() {
 
   return (
     <AdminLayout>
+      <ConfirmDialog
+        open={confirmTarget !== null}
+        title="Deactivate user?"
+        description={`${confirmTarget?.name} won't be able to sign in until reactivated.`}
+        confirmLabel="Deactivate"
+        danger
+        onConfirm={() => { patch(confirmTarget!.userId, { isActive: false }); setConfirmTarget(null); }}
+        onCancel={() => setConfirmTarget(null)}
+      />
       {/* ── Header ── */}
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -304,10 +355,7 @@ export default function AccountsPage() {
                             className="h-7 w-7 text-red-400/60 hover:text-red-400 hover:bg-red-500/10"
                             title="Deactivate user"
                             disabled={isSaving}
-                            onClick={() => {
-                              if (confirm(`Deactivate ${u.name}? They won't be able to sign in.`))
-                                patch(u.userId, { isActive: false });
-                            }}
+                            onClick={() => setConfirmTarget(u)}
                           >
                             {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ShieldOff className="w-3.5 h-3.5" />}
                           </Button>
