@@ -561,10 +561,10 @@ export default function ModuleBuilderPage() {
       }
 
       setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
 
-      if (!editId && moduleId) {
-        setLocation(`/admin/module-builder?id=${moduleId}`);
+      // After save, go to Assign Modules so the admin can immediately assign learners
+      if (moduleId) {
+        setTimeout(() => setLocation(`/admin/assign-modules?moduleId=${moduleId}`), 600);
       }
     } catch (e: any) {
       setSaveError(e.message ?? "Save failed");

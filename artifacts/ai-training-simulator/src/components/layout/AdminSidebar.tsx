@@ -1,17 +1,18 @@
 import { Link, useLocation } from 'wouter';
-import { Users, FileText, CheckSquare, BarChart, Settings, User, LayoutDashboard, Database, Terminal, Beaker, Layers, BookOpen } from 'lucide-react';
+import { Users, FileText, CheckSquare, BarChart, Settings, User, LayoutDashboard, Database, Terminal, Beaker, Layers, BookOpen, UserPlus } from 'lucide-react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const navItems = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+  { name: 'Manage Modules', path: '/admin/modules', icon: BookOpen },
+  { name: 'Module Builder', path: '/admin/module-builder', icon: Layers },
+  { name: 'Assign Modules', path: '/admin/assign-modules', icon: UserPlus },
   { name: 'Assignments', path: '/admin/assignments', icon: CheckSquare },
   { name: 'Grading Center', path: '/admin/grading', icon: FileText },
   { name: 'Progress Tracking', path: '/admin/progress', icon: BarChart },
   { name: 'Account Management', path: '/admin/accounts', icon: Users },
-  { name: 'Module Builder', path: '/admin/module-builder', icon: Layers },
-  { name: 'Manage Modules', path: '/admin/modules', icon: BookOpen },
   { name: 'Profile', path: '/admin/profile', icon: User },
   { name: 'Settings', path: '/admin/settings', icon: Settings },
 ];
