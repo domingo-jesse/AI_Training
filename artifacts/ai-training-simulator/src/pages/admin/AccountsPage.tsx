@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Users, UserPlus, RefreshCw, AlertCircle, X, CheckCircle2,
-  ShieldOff, ShieldCheck, Pencil, Check, ChevronDown,
+  ShieldOff, ShieldCheck, Pencil, Check,
 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 
@@ -107,6 +107,8 @@ export default function AccountsPage() {
 
   // Per-row action state
   const [patchingId, setPatchingId] = useState<number | null>(null);
+  const [editingUserId, setEditingUserId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<{ name: string; email: string; role: MembershipRole }>({ name: "", email: "", role: "learner" });
 
   const load = () => {
     if (!orgId) return;
@@ -320,81 +322,156 @@ export default function AccountsPage() {
               {/* Column headers */}
               <div className="flex items-center gap-3 px-5 py-2 border-b border-border/40 text-xs text-muted-foreground font-medium uppercase tracking-wide">
                 <span className="w-9 shrink-0" />
-                <span className="w-36 shrink-0">Name</span>
+                <span className="w-44 shrink-0">Name</span>
                 <span className="flex-1 min-w-0">Email</span>
                 <span className="w-28 shrink-0">Role</span>
-                <span className="w-20 shrink-0">Status</span>
-                <span className="w-24 shrink-0">Added</span>
-                <span className="w-8 shrink-0" />
+                <span className="w-36 shrink-0" />
               </div>
 
               <div className="divide-y divide-border/40">
-                {active.map(u => (
-                  <div
-                    key={u.userId}
-                    className="flex items-center gap-3 px-5 py-3 hover:bg-muted/20 transition-colors group"
-                  >
-                    {/* Avatar */}
-                    <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0 select-none">
-                      {getInitials(u.name)}
-                    </div>
+                {active.map(u => {
+                  const isEditing = editingUserId === u.userId;
+                  return (
+                    <div key={u.userId}>
+                      {/* Main row */}
+                      <div className="flex items-center gap-3 px-5 py-3 hover:bg-muted/20 transition-colors">
+                        {/* Avatar */}
+                        <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0 select-none">
+                          {getInitials(u.name)}
+                        </div>
 
-                    {/* Editable name */}
-                    <div className="w-36 shrink-0 min-w-0">
-                      <EditableCell value={u.name} onSave={name => patch(u.userId, { name })} />
-                      {u.authProvider === "pending" && (
-                        <span className="text-xs text-amber-400">Pending sign-in</span>
+                        {/* Name */}
+                        <div className="w-44 shrink-0 min-w-0">
+                          <p className="text-sm font-medium truncate">{u.name}</p>
+                          {u.authProvider === "pending" && (
+                            <span className="text-xs text-amber-400">Pending sign-in</span>
+                          )}
+                        </div>
+
+                        {/* Email — full, wraps if needed */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-muted-foreground break-all">{u.email ?? "—"}</p>
+                        </div>
+
+                        {/* Role dropdown */}
+                        <div className="w-28 shrink-0">
+                          {patchingId === u.userId ? (
+                            <RefreshCw className="w-4 h-4 text-muted-foreground animate-spin" />
+                          ) : (
+                            <select
+                              value={u.membershipRole}
+                              onChange={e => patch(u.userId, { role: e.target.value })}
+                              className={`w-full h-7 rounded border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-ring capitalize cursor-pointer ${ROLE_COLORS[u.membershipRole] ?? ""}`}
+                            >
+                              {MEMBERSHIP_ROLE_OPTIONS.map(r => (
+                                <option key={r} value={r} className="bg-background text-foreground capitalize">{r}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="w-36 shrink-0 flex items-center gap-2 justify-end">
+                          {/* Edit */}
+                          <Button
+                            variant={isEditing ? "secondary" : "outline"}
+                            size="sm"
+                            className="h-7 px-2.5 text-xs gap-1.5"
+                            onClick={() => {
+                              if (isEditing) {
+                                setEditingUserId(null);
+                              } else {
+                                setEditDraft({ name: u.name, email: u.email ?? "", role: u.membershipRole as MembershipRole });
+                                setEditingUserId(u.userId);
+                              }
+                            }}
+                          >
+                            {isEditing ? <X className="w-3 h-3" /> : <Pencil className="w-3 h-3" />}
+                            {isEditing ? "Cancel" : "Edit"}
+                          </Button>
+
+                          {/* Deactivate */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2.5 text-xs gap-1.5 border-red-500/40 text-red-400 hover:bg-red-500/10 hover:border-red-500/60"
+                            disabled={patchingId === u.userId}
+                            onClick={() => {
+                              if (confirm(`Deactivate ${u.name}? They won't be able to sign in.`))
+                                patch(u.userId, { isActive: false });
+                            }}
+                          >
+                            {patchingId === u.userId
+                              ? <RefreshCw className="w-3 h-3 animate-spin" />
+                              : <ShieldOff className="w-3 h-3" />}
+                            Deactivate
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Inline edit panel */}
+                      {isEditing && (
+                        <div className="border-t border-border/40 bg-muted/30 px-5 py-4">
+                          <div className="flex items-end gap-4 flex-wrap">
+                            <div className="space-y-1.5 w-48">
+                              <Label className="text-xs text-muted-foreground uppercase tracking-wide">Full Name</Label>
+                              <Input
+                                value={editDraft.name}
+                                onChange={e => setEditDraft(d => ({ ...d, name: e.target.value }))}
+                                className="h-8 text-sm"
+                                autoFocus
+                              />
+                            </div>
+                            <div className="space-y-1.5 flex-1 min-w-48">
+                              <Label className="text-xs text-muted-foreground uppercase tracking-wide">Email</Label>
+                              <Input
+                                type="email"
+                                value={editDraft.email}
+                                onChange={e => setEditDraft(d => ({ ...d, email: e.target.value }))}
+                                className="h-8 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1.5 w-36">
+                              <Label className="text-xs text-muted-foreground uppercase tracking-wide">Role</Label>
+                              <select
+                                value={editDraft.role}
+                                onChange={e => setEditDraft(d => ({ ...d, role: e.target.value as MembershipRole }))}
+                                className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring capitalize"
+                              >
+                                {MEMBERSHIP_ROLE_OPTIONS.map(r => (
+                                  <option key={r} value={r} className="capitalize">{r}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex gap-2 pb-0.5">
+                              <Button
+                                size="sm"
+                                className="h-8"
+                                disabled={patchingId === u.userId}
+                                onClick={async () => {
+                                  await patch(u.userId, {
+                                    name: editDraft.name,
+                                    email: editDraft.email,
+                                    role: editDraft.role,
+                                  });
+                                  setEditingUserId(null);
+                                }}
+                              >
+                                {patchingId === u.userId
+                                  ? <RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />
+                                  : <Check className="w-3 h-3 mr-1.5" />}
+                                Save
+                              </Button>
+                              <Button variant="outline" size="sm" className="h-8" onClick={() => setEditingUserId(null)}>
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
-
-                    {/* Editable email */}
-                    <div className="flex-1 min-w-0 overflow-hidden">
-                      <EditableCell value={u.email ?? ""} onSave={email => patch(u.userId, { email })} />
-                    </div>
-
-                    {/* Role dropdown — fixed width, no overflow */}
-                    <div className="w-28 shrink-0">
-                      {patchingId === u.userId ? (
-                        <RefreshCw className="w-4 h-4 text-muted-foreground animate-spin" />
-                      ) : (
-                        <select
-                          value={u.membershipRole}
-                          onChange={e => patch(u.userId, { role: e.target.value })}
-                          className={`w-full h-7 rounded border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-ring capitalize cursor-pointer ${ROLE_COLORS[u.membershipRole] ?? ""}`}
-                        >
-                          {MEMBERSHIP_ROLE_OPTIONS.map(r => (
-                            <option key={r} value={r} className="bg-background text-foreground capitalize">{r}</option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-
-                    {/* Status */}
-                    <div className="w-20 shrink-0">
-                      <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
-                        Active
-                      </Badge>
-                    </div>
-
-                    {/* Added date */}
-                    <div className="w-24 shrink-0 text-xs text-muted-foreground">{fmt(u.createdAt)}</div>
-
-                    {/* Deactivate */}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="w-8 h-8 shrink-0 text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Deactivate user"
-                      disabled={patchingId === u.userId}
-                      onClick={() => {
-                        if (confirm(`Deactivate ${u.name}? They won't be able to sign in.`))
-                          patch(u.userId, { isActive: false });
-                      }}
-                    >
-                      <ShieldOff className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </Card>
           )}
