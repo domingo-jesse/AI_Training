@@ -184,7 +184,10 @@ export default function GradingPage() {
   // Parse question responses
   const parsedResponses: QuestionResponse[] = (() => {
     if (!selected?.questionResponses) return [];
-    try { return JSON.parse(selected.questionResponses); } catch { return []; }
+    try {
+      const parsed = JSON.parse(selected.questionResponses);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
   })();
 
   const totalMaxPoints = selected?.questions.reduce((s, q) => s + q.maxPoints, 0) ?? 0;
