@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, attempts, modules, users, submissionScores, organizationMemberships, moduleQuestions } from "@workspace/db";
 import { eq, and, desc, asc, inArray } from "drizzle-orm";
 import { requireLocalUser } from "../middleware/auth";
+import { gradeWithLLM } from "../services/llmGraderService";
 
 const router: IRouter = Router();
 
@@ -164,6 +165,8 @@ router.get("/attempts/:id", requireLocalUser, async (req, res): Promise<void> =>
       expectedDiagnosis: modules.expectedDiagnosis,
       expectedReasoningPath: modules.expectedReasoningPath,
       expectedNextSteps: modules.expectedNextSteps,
+      llmScoringEnabled: modules.llmScoringEnabled,
+      llmGraderInstructions: modules.llmGraderInstructions,
     })
     .from(attempts)
     .innerJoin(users, eq(users.userId, attempts.userId))
@@ -248,6 +251,90 @@ router.post("/attempts/:id/submit", requireLocalUser, async (req, res): Promise<
   }).where(eq(attempts.attemptId, attemptId)).returning();
 
   res.json(updated);
+});
+
+/**
+ * POST /api/attempts/:id/grade-ai
+ * Admin: request AI-generated grade suggestions (does NOT save — returns preview for admin review).
+ */
+router.post("/attempts/:id/grade-ai", requireLocalUser, async (req, res): Promise<void> => {
+  const localUser = (req as any).localUser;
+  const attemptId = parseInt(req.params.id, 10);
+  if (isNaN(attemptId)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [attempt] = await db
+    .select({
+      attemptId: attempts.attemptId,
+      organizationId: attempts.organizationId,
+      moduleId: attempts.moduleId,
+      questionResponses: attempts.questionResponses,
+      moduleTitle: modules.title,
+      scenarioContext: modules.scenarioContext,
+      hiddenRootCause: modules.hiddenRootCause,
+      expectedDiagnosis: modules.expectedDiagnosis,
+      expectedReasoningPath: modules.expectedReasoningPath,
+      expectedNextSteps: modules.expectedNextSteps,
+      llmScoringEnabled: modules.llmScoringEnabled,
+      llmGraderInstructions: modules.llmGraderInstructions,
+    })
+    .from(attempts)
+    .innerJoin(modules, eq(modules.moduleId, attempts.moduleId))
+    .where(eq(attempts.attemptId, attemptId))
+    .limit(1);
+
+  if (!attempt) { res.status(404).json({ error: "Not found" }); return; }
+  if (!attempt.organizationId || !(await isOrgAdmin(localUser, attempt.organizationId))) {
+    res.status(403).json({ error: "Insufficient permissions" }); return;
+  }
+
+  // Parse learner responses
+  let parsedResponses: Array<{ questionId: number; response: string }> = [];
+  try {
+    const r = JSON.parse(attempt.questionResponses ?? "[]");
+    parsedResponses = Array.isArray(r) ? r : [];
+  } catch { /* ignore */ }
+
+  // Load questions
+  const questions = await db
+    .select()
+    .from(moduleQuestions)
+    .where(eq(moduleQuestions.moduleId, attempt.moduleId))
+    .orderBy(asc(moduleQuestions.questionOrder));
+
+  const totalMaxPoints = questions.reduce((s, q) => s + (q.maxPoints ?? 0), 0);
+
+  const gradeQuestions = questions.map(q => {
+    const resp = parsedResponses.find(r => r.questionId === q.questionId);
+    return {
+      questionId: q.questionId,
+      questionText: q.questionText ?? "",
+      expectedAnswer: q.expectedAnswer ?? null,
+      rubric: q.rubric ?? null,
+      maxPoints: q.maxPoints ?? 0,
+      learnerResponse: resp?.response ?? "",
+    };
+  });
+
+  try {
+    const result = await gradeWithLLM({
+      moduleTitle: attempt.moduleTitle,
+      scenarioContext: attempt.scenarioContext ?? null,
+      hiddenRootCause: attempt.hiddenRootCause ?? null,
+      expectedDiagnosis: attempt.expectedDiagnosis ?? null,
+      expectedReasoningPath: attempt.expectedReasoningPath ?? null,
+      expectedNextSteps: attempt.expectedNextSteps ?? null,
+      graderInstructions: attempt.llmGraderInstructions ?? null,
+      questions: gradeQuestions,
+      totalMaxPoints,
+    });
+    res.json(result);
+  } catch (err: any) {
+    if (err.code === "NO_API_KEY") {
+      res.status(503).json({ error: err.message, code: "NO_API_KEY" });
+    } else {
+      res.status(500).json({ error: err.message ?? "AI grading failed" });
+    }
+  }
 });
 
 /**

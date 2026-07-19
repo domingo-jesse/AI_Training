@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import {
   CheckSquare, User, BookOpen, Clock, ChevronRight, X,
-  CheckCircle2, AlertCircle, Send, RefreshCw
+  CheckCircle2, AlertCircle, Send, RefreshCw, Sparkles, Info
 } from "lucide-react";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -51,6 +51,8 @@ interface AttemptDetail extends AttemptSummary {
   expectedDiagnosis: string | null;
   expectedReasoningPath: string | null;
   expectedNextSteps: string | null;
+  llmScoringEnabled: boolean | null;
+  llmGraderInstructions: string | null;
   questions: Question[];
   submissionScore: any | null;
 }
@@ -102,6 +104,9 @@ export default function GradingPage() {
   const [gradeForm, setGradeForm] = useState<GradeForm>(EMPTY_GRADE);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [aiGrading, setAiGrading] = useState(false);
+  const [aiPrefilled, setAiPrefilled] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const orgId = currentOrg?.organizationId;
 
@@ -122,6 +127,8 @@ export default function GradingPage() {
     setLoadingDetail(true);
     setSelected(null);
     setSaveMsg(null);
+    setAiPrefilled(false);
+    setAiError(null);
     try {
       const r = await fetch(`${base}/api/attempts/${attemptId}`, { credentials: "include" });
       const d: AttemptDetail = await r.json();
@@ -175,6 +182,41 @@ export default function GradingPage() {
       setSaveMsg({ type: "err", text: e.message });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const requestAiGrade = async () => {
+    if (!selected) return;
+    setAiGrading(true);
+    setAiError(null);
+    setAiPrefilled(false);
+    try {
+      const r = await fetch(`${base}/api/attempts/${selected.attemptId}/grade-ai`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setAiError(data.error ?? "AI grading failed. Please try again.");
+        return;
+      }
+      setGradeForm(prev => ({
+        ...prev,
+        totalScore: String(data.totalScore ?? prev.totalScore),
+        overallFeedback: data.overallFeedback ?? prev.overallFeedback,
+        strengths: data.strengths ?? prev.strengths,
+        missedPoints: data.missedPoints ?? prev.missedPoints,
+        bestPracticeReasoning: data.bestPracticeReasoning ?? prev.bestPracticeReasoning,
+        recommendedResponse: data.recommendedResponse ?? prev.recommendedResponse,
+        takeawaySummary: data.takeawaySummary ?? prev.takeawaySummary,
+        resultStatus: data.resultStatus === "rejected" ? "rejected" : "approved",
+      }));
+      setAiPrefilled(true);
+    } catch {
+      setAiError("Network error. Please try again.");
+    } finally {
+      setAiGrading(false);
     }
   };
 
@@ -353,10 +395,35 @@ export default function GradingPage() {
 
               {/* Grade form */}
               <Card className="border-primary/20">
-                <CardHeader className="py-4 px-5 border-b border-border/50">
+                <CardHeader className="py-4 px-5 border-b border-border/50 flex-row items-center justify-between">
                   <CardTitle className="text-base">Grade Submission</CardTitle>
+                  {selected.llmScoringEnabled && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 border-violet-500/40 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
+                      onClick={requestAiGrade}
+                      disabled={aiGrading}
+                    >
+                      {aiGrading
+                        ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Grading…</>
+                        : <><Sparkles className="w-3.5 h-3.5" /> AI Grade</>}
+                    </Button>
+                  )}
                 </CardHeader>
                 <CardContent className="p-5 space-y-4">
+                  {aiPrefilled && (
+                    <div className="flex items-start gap-2 text-sm p-3 rounded-lg bg-violet-500/10 text-violet-300 border border-violet-500/20">
+                      <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>AI has pre-filled this form. Review all fields before submitting — edit anything that needs adjustment.</span>
+                    </div>
+                  )}
+                  {aiError && (
+                    <div className="flex items-center gap-2 text-sm p-3 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      {aiError}
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <Label className="text-sm">Total Score{totalMaxPoints > 0 ? ` (max ${totalMaxPoints})` : ""}</Label>
