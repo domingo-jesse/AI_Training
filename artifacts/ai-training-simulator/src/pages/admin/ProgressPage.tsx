@@ -615,12 +615,15 @@ export default function ProgressPage() {
                 <>
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: activeGroup.color }} />
                   <span className="max-w-32 truncate">{activeGroup.name}</span>
-                  <button
+                  <span
+                    role="button"
+                    tabIndex={0}
                     onClick={e => { e.stopPropagation(); setGroupFilter(null); setGroupDropdownOpen(false); }}
-                    className="ml-0.5 hover:text-foreground"
+                    onKeyDown={e => e.key === "Enter" && (setGroupFilter(null), setGroupDropdownOpen(false))}
+                    className="ml-0.5 hover:text-foreground cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
-                  </button>
+                  </span>
                 </>
               ) : (
                 <><Layers className="w-3.5 h-3.5" /> Filter by group <ChevronDown className="w-3.5 h-3.5 ml-0.5" /></>

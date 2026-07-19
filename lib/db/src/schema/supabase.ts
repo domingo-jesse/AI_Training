@@ -683,6 +683,24 @@ export const userGroups = pgTable("user_groups", {
 	unique("user_groups_group_id_user_id_key").on(table.groupId, table.userId),
 ]);
 
+export const orgSettings = pgTable("org_settings", {
+	orgId: bigint("org_id", { mode: "number" }).primaryKey(),
+	passingScore: integer("passing_score").notNull().default(70),
+	allowMultipleAttempts: boolean("allow_multiple_attempts").notNull().default(true),
+	maxAttempts: integer("max_attempts").notNull().default(3),
+	defaultDifficulty: text("default_difficulty").notNull().default("intermediate"),
+	defaultTimeLimit: integer("default_time_limit").notNull().default(0),
+	showScoreToLearner: boolean("show_score_to_learner").notNull().default(true),
+	showFeedbackToLearner: boolean("show_feedback_to_learner").notNull().default(true),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => [
+	foreignKey({
+		columns: [table.orgId],
+		foreignColumns: [organizations.organizationId],
+		name: "org_settings_org_id_fkey",
+	}).onDelete("cascade"),
+]);
+
 export const learnerDashboardSummary = pgView("learner_dashboard_summary", {	userId: text("user_id"),
 	name: text(),
 	team: text(),
