@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Users, UserPlus, RefreshCw, AlertCircle, X,
-  ShieldOff, ShieldCheck, Pencil, Check, CheckCircle2, Search,
+  ShieldOff, ShieldCheck, Pencil, Check, CheckCircle2, Search, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 
@@ -111,6 +111,7 @@ export default function AccountsPage() {
   const [patchingId, setPatchingId] = useState<number | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<AdminUser | null>(null);
   const [search, setSearch] = useState("");
+  const [inactiveOpen, setInactiveOpen] = useState(false);
 
   const load = () => {
     if (!orgId) return;
@@ -426,36 +427,45 @@ export default function AccountsPage() {
 
           {/* ── Deactivated users ── */}
           {inactive.length > 0 && (
-            <Card className="overflow-hidden">
-              <CardHeader className="px-5 py-3.5 border-b border-border/50">
-                <CardTitle className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                  <ShieldOff className="w-4 h-4" />
-                  Deactivated
-                  <span className="font-normal">({inactive.length})</span>
-                </CardTitle>
-              </CardHeader>
-              <div className="divide-y divide-border/30">
-                {inactive.map(u => (
-                  <div key={u.userId} className="flex items-center gap-3 px-5 py-3">
-                    <div className="w-8 h-8 rounded-full bg-muted/40 flex items-center justify-center text-xs font-semibold text-muted-foreground shrink-0">
-                      {u.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-muted-foreground line-through truncate">{u.name}</p>
-                      <p className="text-xs text-muted-foreground/50 truncate">{u.email ?? "—"}</p>
-                    </div>
-                    <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 shrink-0"
-                      disabled={patchingId === u.userId}
-                      onClick={() => patch(u.userId, { isActive: true })}>
-                      {patchingId === u.userId
-                        ? <RefreshCw className="w-3 h-3 animate-spin" />
-                        : <ShieldCheck className="w-3 h-3 text-emerald-400" />}
-                      Reactivate
-                    </Button>
+            <div className="mt-6">
+              <button
+                onClick={() => setInactiveOpen(v => !v)}
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
+              >
+                {inactiveOpen
+                  ? <ChevronDown className="w-4 h-4" />
+                  : <ChevronRight className="w-4 h-4" />}
+                <ShieldOff className="w-4 h-4" />
+                <span className="font-medium">Deactivated</span>
+                <span className="px-1.5 py-0.5 rounded-full bg-muted text-xs">{inactive.length}</span>
+              </button>
+
+              {inactiveOpen && (
+                <Card className="overflow-hidden">
+                  <div className="divide-y divide-border/30">
+                    {inactive.map(u => (
+                      <div key={u.userId} className="flex items-center gap-3 px-5 py-3 opacity-60 hover:opacity-80 transition-opacity">
+                        <div className="w-8 h-8 rounded-full bg-muted/40 flex items-center justify-center text-xs font-semibold text-muted-foreground shrink-0">
+                          {u.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-muted-foreground line-through truncate">{u.name}</p>
+                          <p className="text-xs text-muted-foreground/50 truncate">{u.email ?? "—"}</p>
+                        </div>
+                        <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 shrink-0"
+                          disabled={patchingId === u.userId}
+                          onClick={() => patch(u.userId, { isActive: true })}>
+                          {patchingId === u.userId
+                            ? <RefreshCw className="w-3 h-3 animate-spin" />
+                            : <ShieldCheck className="w-3 h-3 text-emerald-400" />}
+                          Reactivate
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </Card>
+                </Card>
+              )}
+            </div>
           )}
 
         </div>
