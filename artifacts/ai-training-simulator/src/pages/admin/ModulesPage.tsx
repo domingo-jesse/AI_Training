@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import {
   Plus, Pencil, Trash2, BookOpen, RefreshCw, AlertCircle, Clock,
-  Search, X, Sparkles, ArrowUpDown,
+  Search, X, Sparkles, ArrowUpDown, ChevronDown, ChevronRight, Archive,
 } from "lucide-react";
 
 interface ModuleSummary {
@@ -96,10 +96,20 @@ export default function ModulesPage() {
   const [aiOnly, setAiOnly]         = useState(false);
   const [sort, setSort]             = useState<SortKey>("newest");
   const [sortOpen, setSortOpen]     = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+
+  const applySort = (list: ModuleSummary[]) =>
+    [...list].sort((a, b) => {
+      if (sort === "az")     return a.title.localeCompare(b.title);
+      if (sort === "za")     return b.title.localeCompare(a.title);
+      if (sort === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     let list = modules.filter(m => {
+      if (m.status === "archived") return false;           // always excluded from main list
       if (q && !m.title.toLowerCase().includes(q)) return false;
       if (statusFilter !== "all" && m.status !== statusFilter) return false;
       if (diffFilter   !== "all" && m.difficulty !== diffFilter) return false;
@@ -107,15 +117,15 @@ export default function ModulesPage() {
       return true;
     });
 
-    list = [...list].sort((a, b) => {
-      if (sort === "az")     return a.title.localeCompare(b.title);
-      if (sort === "za")     return b.title.localeCompare(a.title);
-      if (sort === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(); // newest
-    });
-
-    return list;
+    return applySort(list);
   }, [modules, search, statusFilter, diffFilter, aiOnly, sort]);
+
+  const archivedFiltered = useMemo(() => {
+    const q = search.toLowerCase();
+    return applySort(modules.filter(m =>
+      m.status === "archived" && (!q || m.title.toLowerCase().includes(q))
+    ));
+  }, [modules, search, sort]);
 
   const activeFilterCount = [
     search !== "",
@@ -142,7 +152,7 @@ export default function ModulesPage() {
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground">Module Library</h1>
           <p className="text-muted-foreground mt-1">
-            {modules.length} module{modules.length !== 1 ? "s" : ""} in {currentOrg?.organizationName ?? "…"}
+            {modules.filter(m => m.status !== "archived").length} active module{modules.filter(m => m.status !== "archived").length !== 1 ? "s" : ""} in {currentOrg?.organizationName ?? "…"}
             {activeFilterCount > 0 && (
               <span className="ml-2 text-xs text-primary">
                 · {filtered.length} shown
@@ -215,7 +225,7 @@ export default function ModulesPage() {
           {/* Status */}
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground w-12">Status</span>
-            {["all", "published", "draft", "archived"].map(s => (
+            {["all", "published", "draft"].map(s => (
               <Chip
                 key={s}
                 active={statusFilter === s}
@@ -223,7 +233,6 @@ export default function ModulesPage() {
                 color={
                   s === "published" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40" :
                   s === "draft"     ? "bg-slate-500/20 text-slate-400 border-slate-500/40" :
-                  s === "archived"  ? "bg-orange-500/20 text-orange-400 border-orange-500/40" :
                   undefined
                 }
               >
@@ -370,6 +379,75 @@ export default function ModulesPage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+      {/* ── Archived section ── */}
+      {!isLoading && archivedFiltered.length > 0 && (
+        <div className="mt-8">
+          <button
+            onClick={() => setArchiveOpen(v => !v)}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3 group"
+          >
+            {archiveOpen
+              ? <ChevronDown className="w-4 h-4" />
+              : <ChevronRight className="w-4 h-4" />}
+            <Archive className="w-4 h-4" />
+            <span className="font-medium">Archived</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-muted text-xs">{archivedFiltered.length}</span>
+          </button>
+
+          {archiveOpen && (
+            <div className="grid gap-3">
+              {archivedFiltered.map(mod => (
+                <Card key={mod.moduleId} className="opacity-60 hover:opacity-80 transition-opacity border-dashed">
+                  <CardContent className="flex items-center gap-4 py-4 px-6">
+                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                      <BookOpen className="w-5 h-5 text-muted-foreground" />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-foreground truncate">{mod.title}</p>
+                        <Badge variant="outline" className="text-xs bg-orange-500/20 text-orange-400 border-orange-500/30">
+                          archived
+                        </Badge>
+                        <Badge variant="outline" className={`text-xs capitalize ${DIFFICULTY_COLORS[mod.difficulty] ?? ""}`}>
+                          {mod.difficulty}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
+                        <span>{mod.category}</span>
+                        {mod.estimatedTime && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />{mod.estimatedTime}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Link href={`/admin/module-builder?id=${mod.moduleId}`}>
+                        <Button variant="outline" size="sm">
+                          <Pencil className="w-4 h-4 mr-1" /> Edit
+                        </Button>
+                      </Link>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-400 border-red-500/30 hover:bg-red-500/10"
+                        onClick={() => handleDelete(mod.moduleId, mod.title)}
+                        disabled={deleting === mod.moduleId}
+                      >
+                        {deleting === mod.moduleId
+                          ? <RefreshCw className="w-4 h-4 animate-spin" />
+                          : <Trash2 className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </AdminLayout>
