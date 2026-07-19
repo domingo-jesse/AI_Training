@@ -314,6 +314,23 @@ export default function LearnerWorkspacePage() {
   }
 
   // ── Questions ──────────────────────────────────────────────────────────────
+
+  // Guard: entered questions phase but module has no questions
+  if (phase === "questions" && questions.length === 0) {
+    return (
+      <LearnerLayout>
+        <Card className="flex flex-col items-center p-16 text-center max-w-lg mx-auto">
+          <AlertCircle className="w-10 h-10 text-amber-400 mb-4" />
+          <h2 className="text-lg font-semibold mb-2">No questions available</h2>
+          <p className="text-muted-foreground text-sm mb-6">
+            This module doesn't have any questions yet. Your admin needs to add questions before you can complete it.
+          </p>
+          <Button variant="outline" onClick={() => setLocation("/learner/modules")}>Back to My Modules</Button>
+        </Card>
+      </LearnerLayout>
+    );
+  }
+
   return (
     <LearnerLayout>
       <div className="max-w-3xl mx-auto">
