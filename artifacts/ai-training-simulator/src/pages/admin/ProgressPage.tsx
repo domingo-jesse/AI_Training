@@ -42,26 +42,71 @@ function fmt(d: string | null) {
 }
 
 export default function ProgressPage() {
-  const { currentOrg } = useOrganization();
+  const { currentOrg, isLoading: orgLoading } = useOrganization();
   const [data, setData] = useState<OrgProgress | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (!currentOrg?.organizationId) return;
     setLoading(true);
-    fetch(`${base}/api/progress/org?orgId=${currentOrg.organizationId}`, { credentials: "include" })
-      .then(r => r.json())
+    setError(null);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+
+    fetch(`${base}/api/progress/org?orgId=${currentOrg.organizationId}`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(r => {
+        if (!r.ok) throw new Error(`Server error (${r.status})`);
+        return r.json();
+      })
       .then(setData)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(e => {
+        if (e.name !== "AbortError") setError(e.message ?? "Failed to load progress data");
+        else setError("Request timed out. Please refresh.");
+      })
+      .finally(() => { clearTimeout(timeout); setLoading(false); });
+
+    return () => { controller.abort(); clearTimeout(timeout); };
   }, [currentOrg?.organizationId]);
 
-  if (loading) {
+  if (orgLoading || (loading && !data)) {
     return (
       <AdminLayout>
         <div className="flex items-center justify-center h-64">
           <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (!orgLoading && !currentOrg) {
+    return (
+      <AdminLayout>
+        <div className="flex flex-col items-center justify-center h-64 text-center">
+          <AlertCircle className="w-10 h-10 text-muted-foreground mb-3" />
+          <p className="text-muted-foreground">No organization found. Please contact your administrator.</p>
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <AdminLayout>
+        <div className="flex flex-col items-center justify-center h-64 text-center gap-3">
+          <AlertCircle className="w-10 h-10 text-red-400" />
+          <p className="text-red-400 text-sm">{error}</p>
+          <button
+            onClick={() => { setError(null); setLoading(true); }}
+            className="text-sm text-primary underline underline-offset-2"
+          >
+            Retry
+          </button>
         </div>
       </AdminLayout>
     );

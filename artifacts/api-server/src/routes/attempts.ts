@@ -422,44 +422,48 @@ router.post("/attempts/:id/grade", requireLocalUser, async (req, res): Promise<v
  * Admin: org-wide progress summary.
  */
 router.get("/progress/org", requireLocalUser, async (req, res): Promise<void> => {
-  const localUser = (req as any).localUser;
-  const orgId = parseInt(req.query.orgId as string, 10);
-  if (isNaN(orgId)) { res.status(400).json({ error: "orgId required" }); return; }
+  try {
+    const localUser = (req as any).localUser;
+    const orgId = parseInt(req.query.orgId as string, 10);
+    if (isNaN(orgId)) { res.status(400).json({ error: "orgId required" }); return; }
 
-  if (!(await isOrgAdmin(localUser, orgId))) {
-    res.status(403).json({ error: "Insufficient permissions" }); return;
+    if (!(await isOrgAdmin(localUser, orgId))) {
+      res.status(403).json({ error: "Insufficient permissions" }); return;
+    }
+
+    const allAttempts = await db
+      .select({
+        attemptId: attempts.attemptId,
+        userId: attempts.userId,
+        moduleId: attempts.moduleId,
+        attemptState: attempts.attemptState,
+        resultStatus: attempts.resultStatus,
+        totalScore: attempts.totalScore,
+        submittedAt: attempts.submittedAt,
+        learnerName: users.name,
+        moduleTitle: modules.title,
+        moduleCategory: modules.category,
+      })
+      .from(attempts)
+      .innerJoin(users, eq(users.userId, attempts.userId))
+      .innerJoin(modules, eq(modules.moduleId, attempts.moduleId))
+      .where(eq(attempts.organizationId, orgId))
+      .orderBy(desc(attempts.submittedAt));
+
+    const total = allAttempts.length;
+    const submitted = allAttempts.filter(a => a.attemptState === "submitted").length;
+    const graded = allAttempts.filter(a => a.attemptState === "graded").length;
+    const inProgress = allAttempts.filter(a => a.attemptState === "in_progress").length;
+    const scoredAttempts = allAttempts.filter(a => a.totalScore != null);
+    const avgScore = scoredAttempts.length > 0
+      ? scoredAttempts.reduce((s, a) => s + (a.totalScore ?? 0), 0) / scoredAttempts.length
+      : null;
+
+    res.json({ total, submitted, graded, inProgress, avgScore, attempts: allAttempts });
+  } catch (err) {
+    console.error("GET /progress/org error:", err);
+    res.status(500).json({ error: "Failed to load progress data" });
   }
-
-  const allAttempts = await db
-    .select({
-      attemptId: attempts.attemptId,
-      userId: attempts.userId,
-      moduleId: attempts.moduleId,
-      attemptState: attempts.attemptState,
-      resultStatus: attempts.resultStatus,
-      totalScore: attempts.totalScore,
-      submittedAt: attempts.submittedAt,
-      learnerName: users.name,
-      moduleTitle: modules.title,
-      moduleCategory: modules.category,
-    })
-    .from(attempts)
-    .innerJoin(users, eq(users.userId, attempts.userId))
-    .innerJoin(modules, eq(modules.moduleId, attempts.moduleId))
-    .where(eq(attempts.organizationId, orgId))
-    .orderBy(desc(attempts.submittedAt));
-
-  // Compute summary stats
-  const total = allAttempts.length;
-  const submitted = allAttempts.filter(a => a.attemptState === "submitted").length;
-  const graded = allAttempts.filter(a => a.attemptState === "graded").length;
-  const inProgress = allAttempts.filter(a => a.attemptState === "in_progress").length;
-  const scoredAttempts = allAttempts.filter(a => a.totalScore != null);
-  const avgScore = scoredAttempts.length > 0
-    ? scoredAttempts.reduce((s, a) => s + (a.totalScore ?? 0), 0) / scoredAttempts.length
-    : null;
-
-  res.json({ total, submitted, graded, inProgress, avgScore, attempts: allAttempts });
 });
 
 export default router;
