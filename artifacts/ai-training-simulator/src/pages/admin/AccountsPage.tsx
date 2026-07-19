@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Users, UserPlus, RefreshCw, AlertCircle, X,
-  ShieldOff, ShieldCheck, Pencil, Check, CheckCircle2, Search, ChevronDown, ChevronRight,
+  ShieldOff, ShieldCheck, Pencil, Check, CheckCircle2, Search, ChevronDown, ChevronRight, Tag,
 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 
@@ -66,6 +66,13 @@ interface AdminUser {
   membershipStatus: string;
 }
 
+interface Group {
+  groupId: number;
+  name: string;
+  color: string;
+  members: { userId: number }[];
+}
+
 const ROLE_OPTIONS = ["learner", "manager", "admin", "owner"] as const;
 type Role = typeof ROLE_OPTIONS[number];
 
@@ -97,29 +104,34 @@ export default function AccountsPage() {
   const { currentOrg, isLoading: orgLoading } = useOrganization();
   const orgId = currentOrg?.organizationId;
 
-  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [users,  setUsers]  = useState<AdminUser[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error,   setError]   = useState<string | null>(null);
 
   const [showAdd, setShowAdd] = useState(false);
   const [addForm, setAddForm] = useState({ name: "", email: "", role: "learner" as Role });
   const [addLoading, setAddLoading] = useState(false);
   const [addMsg, setAddMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editDraft, setEditDraft] = useState({ name: "", email: "", role: "learner" as Role });
+  const [editingId,  setEditingId]  = useState<number | null>(null);
+  const [editDraft,  setEditDraft]  = useState({ name: "", email: "", role: "learner" as Role, groupIds: new Set<number>() });
   const [patchingId, setPatchingId] = useState<number | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<AdminUser | null>(null);
-  const [search, setSearch] = useState("");
+  const [search,    setSearch]    = useState("");
   const [inactiveOpen, setInactiveOpen] = useState(false);
 
   const load = () => {
     if (!orgId) return;
     setLoading(true);
     setError(null);
-    fetch(`${base}/api/admin/users?orgId=${orgId}`, { credentials: "include" })
-      .then(r => { if (!r.ok) throw new Error(`Failed (${r.status})`); return r.json(); })
-      .then(setUsers)
+    Promise.all([
+      fetch(`${base}/api/admin/users?orgId=${orgId}`, { credentials: "include" })
+        .then(r => { if (!r.ok) throw new Error(`Failed (${r.status})`); return r.json(); }),
+      fetch(`${base}/api/groups?orgId=${orgId}`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : []).catch(() => []),
+    ])
+      .then(([u, g]) => { setUsers(u); setGroups(Array.isArray(g) ? g : []); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   };
@@ -145,6 +157,43 @@ export default function AccountsPage() {
     } finally {
       setPatchingId(null);
     }
+  };
+
+  /** Sync group memberships for a user after editing */
+  const syncGroups = async (userId: number, nextGroupIds: Set<number>) => {
+    const currentGroupIds = new Set(
+      groups.filter(g => g.members.some(m => m.userId === userId)).map(g => g.groupId)
+    );
+    const toAdd    = [...nextGroupIds].filter(id => !currentGroupIds.has(id));
+    const toRemove = [...currentGroupIds].filter(id => !nextGroupIds.has(id));
+
+    await Promise.all([
+      ...toAdd.map(gid =>
+        fetch(`${base}/api/groups/${gid}/members`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ userId }),
+        })
+      ),
+      ...toRemove.map(gid =>
+        fetch(`${base}/api/groups/${gid}/members/${userId}`, {
+          method: "DELETE",
+          credentials: "include",
+        })
+      ),
+    ]);
+
+    // Refresh groups state locally
+    setGroups(prev => prev.map(g => {
+      if (toAdd.includes(g.groupId)) {
+        return { ...g, members: [...g.members, { userId }] };
+      }
+      if (toRemove.includes(g.groupId)) {
+        return { ...g, members: g.members.filter(m => m.userId !== userId) };
+      }
+      return g;
+    }));
   };
 
   const handleAdd = async () => {
@@ -177,17 +226,32 @@ export default function AccountsPage() {
   };
 
   const openEdit = (u: AdminUser) => {
-    setEditDraft({ name: u.name, email: u.email ?? "", role: u.membershipRole as Role });
+    const currentGroupIds = new Set(
+      groups.filter(g => g.members.some(m => m.userId === u.userId)).map(g => g.groupId)
+    );
+    setEditDraft({ name: u.name, email: u.email ?? "", role: u.membershipRole as Role, groupIds: currentGroupIds });
     setEditingId(u.userId);
   };
 
   const saveEdit = async (userId: number) => {
-    const ok = await patch(userId, editDraft);
-    if (ok) setEditingId(null);
+    const { groupIds, ...userFields } = editDraft;
+    const ok = await patch(userId, userFields);
+    if (!ok) return;
+    await syncGroups(userId, groupIds);
+    setEditingId(null);
+  };
+
+  const toggleGroup = (groupId: number) => {
+    setEditDraft(d => {
+      const next = new Set(d.groupIds);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return { ...d, groupIds: next };
+    });
   };
 
   const allActive = users.filter(u => u.isActive !== false && u.membershipStatus === "active");
-  const inactive = users.filter(u => u.isActive === false || u.membershipStatus === "inactive");
+  const inactive  = users.filter(u => u.isActive === false || u.membershipStatus === "inactive");
   const q = search.toLowerCase();
   const active = allActive.filter(u =>
     !q ||
@@ -195,6 +259,10 @@ export default function AccountsPage() {
     (u.email ?? "").toLowerCase().includes(q) ||
     u.membershipRole.toLowerCase().includes(q)
   );
+
+  /** Groups a user belongs to */
+  const userGroups = (userId: number) =>
+    groups.filter(g => g.members.some(m => m.userId === userId));
 
   if (orgLoading) return (
     <AdminLayout>
@@ -224,6 +292,7 @@ export default function AccountsPage() {
         onConfirm={() => { patch(confirmTarget!.userId, { isActive: false }); setConfirmTarget(null); }}
         onCancel={() => setConfirmTarget(null)}
       />
+
       {/* ── Header ── */}
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -343,7 +412,8 @@ export default function AccountsPage() {
               <div className="divide-y divide-border/40">
                 {active.map(u => {
                   const isEditing = editingId === u.userId;
-                  const isSaving = patchingId === u.userId;
+                  const isSaving  = patchingId === u.userId;
+                  const ug        = userGroups(u.userId);
                   return (
                     <div key={u.userId}>
                       {/* Row */}
@@ -352,9 +422,29 @@ export default function AccountsPage() {
 
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium leading-tight">{u.name}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                            {u.authProvider === "pending" ? <span className="text-amber-400">Pending first sign-in</span> : (u.email ?? "—")}
-                          </p>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <p className="text-xs text-muted-foreground truncate">
+                              {u.authProvider === "pending"
+                                ? <span className="text-amber-400">Pending first sign-in</span>
+                                : (u.email ?? "—")}
+                            </p>
+                            {/* Group dots */}
+                            {ug.length > 0 && (
+                              <div className="flex items-center gap-1">
+                                {ug.slice(0, 4).map(g => (
+                                  <span
+                                    key={g.groupId}
+                                    title={g.name}
+                                    className="w-2 h-2 rounded-full shrink-0"
+                                    style={{ backgroundColor: g.color }}
+                                  />
+                                ))}
+                                {ug.length > 4 && (
+                                  <span className="text-xs text-muted-foreground">+{ug.length - 4}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         <RolePill role={u.membershipRole} />
@@ -387,7 +477,8 @@ export default function AccountsPage() {
 
                       {/* Edit panel */}
                       {isEditing && (
-                        <div className="bg-muted/30 border-t border-border/40 px-5 py-4">
+                        <div className="bg-muted/30 border-t border-border/40 px-5 py-4 space-y-4">
+                          {/* Name / Email / Role row */}
                           <div className="flex flex-wrap gap-3 items-end">
                             <div className="space-y-1 w-44">
                               <Label className="text-xs text-muted-foreground">Name</Label>
@@ -406,15 +497,53 @@ export default function AccountsPage() {
                                 {ROLE_OPTIONS.map(r => <option key={r} value={r} className="capitalize">{r}</option>)}
                               </select>
                             </div>
-                            <div className="flex gap-2">
-                              <Button size="sm" className="h-8" disabled={isSaving} onClick={() => saveEdit(u.userId)}>
-                                {isSaving ? <RefreshCw className="w-3 h-3 mr-1.5 animate-spin" /> : <Check className="w-3 h-3 mr-1.5" />}
-                                Save
-                              </Button>
-                              <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingId(null)}>
-                                Cancel
-                              </Button>
+                          </div>
+
+                          {/* Team / group assignment */}
+                          {groups.length > 0 && (
+                            <div className="space-y-2">
+                              <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                <Tag className="w-3 h-3" /> Teams
+                              </Label>
+                              <div className="flex flex-wrap gap-2">
+                                {groups.map(g => {
+                                  const active = editDraft.groupIds.has(g.groupId);
+                                  return (
+                                    <button
+                                      key={g.groupId}
+                                      type="button"
+                                      onClick={() => toggleGroup(g.groupId)}
+                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                                        active
+                                          ? "border-transparent text-white"
+                                          : "border-border text-muted-foreground hover:text-foreground hover:border-border/80"
+                                      }`}
+                                      style={active ? { backgroundColor: g.color, borderColor: g.color } : {}}
+                                    >
+                                      {!active && (
+                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
+                                      )}
+                                      {active && <Check className="w-3 h-3 shrink-0" />}
+                                      {g.name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {groups.length === 0 && (
+                                <p className="text-xs text-muted-foreground">No teams created yet. Create teams on the Groups page.</p>
+                              )}
                             </div>
+                          )}
+
+                          {/* Actions */}
+                          <div className="flex gap-2">
+                            <Button size="sm" className="h-8" disabled={isSaving} onClick={() => saveEdit(u.userId)}>
+                              {isSaving ? <RefreshCw className="w-3 h-3 mr-1.5 animate-spin" /> : <Check className="w-3 h-3 mr-1.5" />}
+                              Save
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingId(null)}>
+                              Cancel
+                            </Button>
                           </div>
                         </div>
                       )}
