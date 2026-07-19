@@ -1,79 +1,174 @@
 import { Link, useLocation } from 'wouter';
-import { Users, FileText, CheckSquare, BarChart, Settings, User, LayoutDashboard, Database, Terminal, Beaker, Layers, BookOpen, UserPlus } from 'lucide-react';
+import { Users, FileText, CheckSquare, BarChart, Settings, User, LayoutDashboard, Layers, BookOpen, UserPlus, Database, Terminal, Beaker, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const navItems = [
-  { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { name: 'Manage Modules', path: '/admin/modules', icon: BookOpen },
-  { name: 'Module Builder', path: '/admin/module-builder', icon: Layers },
-  { name: 'Assign Modules', path: '/admin/assign-modules', icon: UserPlus },
-  { name: 'Assignments', path: '/admin/assignments', icon: CheckSquare },
-  { name: 'Grading Center', path: '/admin/grading', icon: FileText },
-  { name: 'Progress Tracking', path: '/admin/progress', icon: BarChart },
-  { name: 'Account Management', path: '/admin/accounts', icon: Users },
-  { name: 'Profile', path: '/admin/profile', icon: User },
-  { name: 'Settings', path: '/admin/settings', icon: Settings },
+  { name: 'Dashboard',          path: '/dashboard',            icon: LayoutDashboard },
+  { name: 'Manage Modules',     path: '/admin/modules',        icon: BookOpen },
+  { name: 'Module Builder',     path: '/admin/module-builder', icon: Layers },
+  { name: 'Assign Modules',     path: '/admin/assign-modules', icon: UserPlus },
+  { name: 'Assignments',        path: '/admin/assignments',    icon: CheckSquare },
+  { name: 'Grading Center',     path: '/admin/grading',        icon: FileText },
+  { name: 'Progress Tracking',  path: '/admin/progress',       icon: BarChart },
+  { name: 'Account Management', path: '/admin/accounts',       icon: Users },
+  { name: 'Profile',            path: '/admin/profile',        icon: User },
+  { name: 'Settings',           path: '/admin/settings',       icon: Settings },
 ];
 
-export function AdminSidebar() {
+const devItems = [
+  { name: 'Database Tables', path: '/admin/db-tables',  icon: Database },
+  { name: 'Debug Logs',      path: '/admin/debug-logs', icon: Terminal },
+  { name: 'QA Test Center',  path: '/admin/qa-center',  icon: Beaker },
+];
+
+interface AdminSidebarProps {
+  isOpen: boolean;
+  isCollapsed: boolean;
+  onClose: () => void;
+  onToggleCollapse: () => void;
+  isMobile: boolean;
+}
+
+export function AdminSidebar({ isOpen, isCollapsed, onClose, onToggleCollapse, isMobile }: AdminSidebarProps) {
   const [location] = useLocation();
   const { localUser } = useCurrentUser();
-  
   const isDeveloper = localUser?.role === 'developer';
 
-  return (
-    <aside className="w-64 bg-sidebar border-r border-sidebar-border h-[100dvh] flex flex-col sticky top-0">
-      <div className="h-16 flex items-center px-6 border-b border-sidebar-border">
-        <Link href="/dashboard" className="flex items-center gap-3">
-          <img src={`${basePath}/logo.svg`} alt="Training Simulator Logo" className="w-8 h-8" />
-          <span className="font-display font-semibold text-lg tracking-tight text-sidebar-foreground">Training Simulator Admin</span>
-        </Link>
+  const collapsed = !isMobile && isCollapsed;
+
+  const navLink = (item: typeof navItems[0]) => {
+    const isActive = location === item.path || location.startsWith(`${item.path}/`);
+    return (
+      <Link
+        key={item.path}
+        href={item.path}
+        onClick={isMobile ? onClose : undefined}
+        title={collapsed ? item.name : undefined}
+        className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 ${
+          collapsed ? 'justify-center' : ''
+        } ${
+          isActive
+            ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+            : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
+        }`}
+      >
+        <item.icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-primary' : ''}`} />
+        {!collapsed && <span className="truncate">{item.name}</span>}
+      </Link>
+    );
+  };
+
+  const sidebarContent = (
+    <aside
+      className={`bg-sidebar border-r border-sidebar-border h-[100dvh] flex flex-col transition-all duration-300 ${
+        collapsed ? 'w-16' : 'w-64'
+      }`}
+    >
+      {/* Header */}
+      <div className={`h-16 flex items-center border-b border-sidebar-border shrink-0 ${collapsed ? 'justify-center px-2' : 'px-4 gap-3'}`}>
+        {!collapsed && (
+          <Link href="/dashboard" className="flex items-center gap-3 flex-1 min-w-0">
+            <img src={`${basePath}/logo.svg`} alt="Logo" className="w-8 h-8 shrink-0" />
+            <span className="font-display font-semibold text-base tracking-tight text-sidebar-foreground truncate">
+              Training Simulator Admin
+            </span>
+          </Link>
+        )}
+        {collapsed && (
+          <Link href="/dashboard">
+            <img src={`${basePath}/logo.svg`} alt="Logo" className="w-8 h-8" />
+          </Link>
+        )}
+        {/* Mobile close button */}
+        {isMobile && (
+          <button
+            onClick={onClose}
+            className="ml-auto p-1.5 rounded-md text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+        {/* Desktop collapse toggle */}
+        {!isMobile && (
+          <button
+            onClick={onToggleCollapse}
+            className={`p-1.5 rounded-md text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors shrink-0 ${collapsed ? '' : 'ml-auto'}`}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </button>
+        )}
       </div>
-      
-      <div className="flex-1 overflow-y-auto py-6 px-4 space-y-1">
-        <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-4 px-2">Management</div>
-        {navItems.map((item) => {
-          const isActive = location === item.path || location.startsWith(`${item.path}/`);
-          return (
-            <Link key={item.path} href={item.path} className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 ${isActive ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium' : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'}`}>
-              <item.icon className={`w-5 h-5 ${isActive ? 'text-primary' : ''}`} />
-              <span>{item.name}</span>
-            </Link>
-          );
-        })}
+
+      {/* Nav */}
+      <div className="flex-1 overflow-y-auto py-5 px-2 space-y-0.5">
+        {!collapsed && (
+          <div className="text-xs font-semibold text-sidebar-foreground/40 uppercase tracking-wider mb-3 px-2">
+            Management
+          </div>
+        )}
+        {navItems.map(navLink)}
 
         {isDeveloper && (
           <>
-            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mt-8 mb-4 px-2">Developer Tools</div>
-            <Link href="/admin/db-tables" className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 ${location === '/admin/db-tables' ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium' : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'}`}>
-              <Database className="w-5 h-5" />
-              <span>Database Tables</span>
-            </Link>
-            <Link href="/admin/debug-logs" className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 ${location === '/admin/debug-logs' ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium' : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'}`}>
-              <Terminal className="w-5 h-5" />
-              <span>Debug Logs</span>
-            </Link>
-            <Link href="/admin/qa-center" className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 ${location === '/admin/qa-center' ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium' : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'}`}>
-              <Beaker className="w-5 h-5" />
-              <span>QA Test Center</span>
-            </Link>
+            {!collapsed && (
+              <div className="text-xs font-semibold text-sidebar-foreground/40 uppercase tracking-wider mt-6 mb-3 px-2">
+                Developer Tools
+              </div>
+            )}
+            {collapsed && <div className="my-2 border-t border-sidebar-border" />}
+            {devItems.map(navLink)}
           </>
         )}
       </div>
-      
-      <div className="p-4 border-t border-sidebar-border">
-        <div className="flex items-center gap-3 px-2 py-2">
-          <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-semibold text-sm">
+
+      {/* Footer */}
+      <div className={`p-3 border-t border-sidebar-border shrink-0 ${collapsed ? 'flex justify-center' : ''}`}>
+        {collapsed ? (
+          <div
+            className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-semibold text-sm"
+            title={localUser?.name || 'Admin'}
+          >
             {localUser?.name?.charAt(0) || 'A'}
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-sidebar-foreground line-clamp-1">{localUser?.name || 'Admin'}</span>
-            <span className="text-xs text-sidebar-foreground/50 capitalize">{localUser?.role || 'Admin'}</span>
+        ) : (
+          <div className="flex items-center gap-3 px-2 py-1.5">
+            <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-semibold text-sm shrink-0">
+              {localUser?.name?.charAt(0) || 'A'}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-medium text-sidebar-foreground truncate">{localUser?.name || 'Admin'}</span>
+              <span className="text-xs text-sidebar-foreground/50 capitalize">{localUser?.role || 'Admin'}</span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </aside>
   );
+
+  if (isMobile) {
+    return (
+      <>
+        {/* Backdrop */}
+        {isOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+            onClick={onClose}
+          />
+        )}
+        {/* Slide-in drawer */}
+        <div
+          className={`fixed top-0 left-0 z-50 h-full transform transition-transform duration-300 ease-in-out ${
+            isOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          {sidebarContent}
+        </div>
+      </>
+    );
+  }
+
+  return sidebarContent;
 }
