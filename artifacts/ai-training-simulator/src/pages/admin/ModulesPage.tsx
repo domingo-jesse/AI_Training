@@ -115,7 +115,7 @@ export default function ModulesPage() {
     });
 
     return list;
-  }, [modules, search, statusFilter, diffFilter, catFilter, aiOnly, sort]);
+  }, [modules, search, statusFilter, diffFilter, aiOnly, sort]);
 
   const activeFilterCount = [
     search !== "",
