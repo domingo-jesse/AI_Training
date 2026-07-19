@@ -29,10 +29,10 @@ const ROLE_OPTIONS = ["learner", "manager", "admin", "owner"] as const;
 type Role = typeof ROLE_OPTIONS[number];
 
 const ROLE_STYLE: Record<string, string> = {
-  owner:   "bg-purple-500/15 text-purple-400 ring-purple-500/25",
-  admin:   "bg-blue-500/15 text-blue-400 ring-blue-500/25",
-  manager: "bg-cyan-500/15 text-cyan-400 ring-cyan-500/25",
-  learner: "bg-slate-500/15 text-slate-400 ring-slate-500/25",
+  owner:   "bg-purple-500/20 text-purple-300 ring-1 ring-purple-500/40",
+  admin:   "bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40",
+  manager: "bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-500/40",
+  learner: "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30",
 };
 
 function Avatar({ name }: { name: string }) {
@@ -301,7 +301,7 @@ export default function AccountsPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
+                            className="h-7 w-7 text-red-400/60 hover:text-red-400 hover:bg-red-500/10"
                             title="Deactivate user"
                             disabled={isSaving}
                             onClick={() => {
