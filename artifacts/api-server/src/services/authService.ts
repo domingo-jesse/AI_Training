@@ -1,5 +1,5 @@
-import { db, users as usersTable, organizations } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, users as usersTable, organizations, organizationMemberships } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 interface SyncUserParams {
@@ -32,6 +32,12 @@ export async function syncUserFromClerk(
       .set({ email, name: name ?? existing.name, authProvider })
       .where(eq(usersTable.id, clerkId))
       .returning();
+
+    // Ensure they have an org membership (may be missing for users created before this fix)
+    if (updated.organizationId) {
+      await ensureOrgMembership(updated.userId, updated.organizationId, updated.role ?? "learner");
+    }
+
     logger.info({ userId: updated.userId, clerkId }, "User synced (updated)");
     return { user: updated, created: false };
   }
@@ -49,6 +55,12 @@ export async function syncUserFromClerk(
       .set({ id: clerkId, email, name: name ?? emailMatch.name, authProvider, isActive: true })
       .where(eq(usersTable.userId, emailMatch.userId))
       .returning();
+
+    // Ensure org membership
+    if (updated.organizationId) {
+      await ensureOrgMembership(updated.userId, updated.organizationId, updated.role ?? "learner");
+    }
+
     logger.info({ userId: updated.userId, clerkId }, "User synced (linked pre-created account)");
     return { user: updated, created: false };
   }
@@ -73,19 +85,23 @@ export async function syncUserFromClerk(
     .where(eq(usersTable.organizationId, org.organizationId));
 
   const isFirstUser = existingUsers.length === 0;
+  const role = isFirstUser ? "admin" : "learner";
 
   const [newUser] = await db
     .insert(usersTable)
     .values({
-      id: clerkId,              // Clerk user ID goes in the text `id` field
+      id: clerkId,
       email,
       name: name ?? "User",
-      role: isFirstUser ? "admin" : "learner",
+      role,
       organizationId: org.organizationId,
       authProvider,
       isActive: true,
     })
     .returning();
+
+  // Add to org membership so they appear in all admin views immediately
+  await ensureOrgMembership(newUser.userId, org.organizationId, role);
 
   logger.info(
     { userId: newUser.userId, clerkId, role: newUser.role, orgId: org.organizationId },
@@ -93,4 +109,40 @@ export async function syncUserFromClerk(
   );
 
   return { user: newUser, created: true };
+}
+
+/**
+ * Upsert an active org membership for a user.
+ * If one already exists (any status), reactivate it and sync the role.
+ */
+async function ensureOrgMembership(
+  userId: number,
+  organizationId: number,
+  role: string,
+): Promise<void> {
+  const [existing] = await db
+    .select({ id: organizationMemberships.id })
+    .from(organizationMemberships)
+    .where(
+      and(
+        eq(organizationMemberships.userId, userId),
+        eq(organizationMemberships.organizationId, organizationId),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(organizationMemberships)
+      .set({ status: "active", role })
+      .where(eq(organizationMemberships.id, existing.id));
+  } else {
+    await db.insert(organizationMemberships).values({
+      userId,
+      organizationId,
+      role,
+      status: "active",
+    });
+    logger.info({ userId, organizationId, role }, "Org membership created");
+  }
 }
