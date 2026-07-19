@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import {
   Save, ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown,
-  BookOpen, FileText, Target, HelpCircle, AlertCircle, CheckCircle2
+  BookOpen, FileText, Target, HelpCircle, AlertCircle, CheckCircle2,
+  Sparkles, X, Wand2, ChevronDown as ChevronDownIcon
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -216,6 +217,226 @@ function QuestionCard({
   );
 }
 
+// ── AI generation panel ────────────────────────────────────────────────────────
+
+const EXAMPLE_PROMPTS = [
+  "A customer service scenario about handling an angry customer who received the wrong order",
+  "A technical support simulation for diagnosing network connectivity issues in a remote office",
+  "A sales roleplay where a prospect objects to pricing and wants to cancel",
+  "A compliance training scenario for handling a data privacy request under GDPR",
+  "A manager coaching a team member who missed their performance targets",
+];
+
+function AiGeneratePanel({
+  onGenerated,
+  onClose,
+}: {
+  onGenerated: (form: ModuleForm, questions: Question[]) => void;
+  onClose: () => void;
+}) {
+  const [prompt, setPrompt] = useState("");
+  const [difficulty, setDifficulty] = useState("intermediate");
+  const [questionCount, setQuestionCount] = useState(3);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+  const [showExamples, setShowExamples] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => { textareaRef.current?.focus(); }, []);
+
+  const handleGenerate = async () => {
+    if (!prompt.trim()) return;
+    setIsGenerating(true);
+    setGenError(null);
+    try {
+      const r = await fetch(`${basePath}/api/modules/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ prompt: prompt.trim(), difficulty, questionCount }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ error: "Generation failed" }));
+        throw new Error(err.error ?? "Generation failed");
+      }
+      const data = await r.json();
+      const newForm: ModuleForm = {
+        title: data.title ?? "",
+        category: data.category ?? "",
+        difficulty: data.difficulty ?? "intermediate",
+        description: data.description ?? "",
+        estimatedTime: data.estimatedTime ?? "",
+        status: "draft",
+        scenarioTicket: data.scenarioTicket ?? "",
+        scenarioContext: data.scenarioContext ?? "",
+        hiddenRootCause: data.hiddenRootCause ?? "",
+        expectedDiagnosis: data.expectedDiagnosis ?? "",
+        expectedReasoningPath: data.expectedReasoningPath ?? "",
+        expectedNextSteps: data.expectedNextSteps ?? "",
+        lessonTakeaway: data.lessonTakeaway ?? "",
+        learningObjectives: data.learningObjectives ?? "",
+        scoringStyle: "llm",
+        llmScoringEnabled: data.llmScoringEnabled ?? true,
+        llmGraderInstructions: data.llmGraderInstructions ?? "",
+      };
+      const newQuestions: Question[] = (data.questions ?? []).map((q: any) => ({
+        questionText: q.questionText ?? "",
+        expectedAnswer: q.expectedAnswer ?? "",
+        maxPoints: q.maxPoints ?? 10,
+        questionType: q.questionType ?? "open_text",
+        rubric: q.rubric ?? "",
+        aiConversationPrompt: q.aiConversationPrompt ?? "",
+        aiRoleOrPersona: q.aiRoleOrPersona ?? "",
+        evaluationFocus: q.evaluationFocus ?? "",
+      }));
+      onGenerated(newForm, newQuestions);
+    } catch (e: any) {
+      setGenError(e.message ?? "Generation failed");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      {/* Backdrop */}
+      <div className="flex-1 bg-black/50" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="w-full max-w-xl bg-background border-l border-border flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-violet-400" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-foreground">Generate Module with AI</h2>
+              <p className="text-xs text-muted-foreground">Describe your scenario — AI fills in the rest</p>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {/* Prompt */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">What is this module about? *</Label>
+            <Textarea
+              ref={textareaRef}
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              placeholder="e.g. A customer service scenario where a customer is frustrated about a billing error and wants a refund…"
+              rows={5}
+              className="resize-none"
+              disabled={isGenerating}
+            />
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setShowExamples(o => !o)}
+            >
+              <ChevronDownIcon className={`w-3 h-3 transition-transform ${showExamples ? "rotate-180" : ""}`} />
+              Show example prompts
+            </button>
+            {showExamples && (
+              <div className="space-y-1.5 pt-1">
+                {EXAMPLE_PROMPTS.map((ex, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => { setPrompt(ex); setShowExamples(false); textareaRef.current?.focus(); }}
+                    className="w-full text-left text-xs px-3 py-2 rounded-md bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {ex}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Options row */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">Difficulty</Label>
+              <Select
+                value={difficulty}
+                onChange={setDifficulty}
+                options={[
+                  { value: "beginner", label: "Beginner" },
+                  { value: "intermediate", label: "Intermediate" },
+                  { value: "advanced", label: "Advanced" },
+                ]}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">Number of questions</Label>
+              <Select
+                value={String(questionCount)}
+                onChange={v => setQuestionCount(Number(v))}
+                options={[1, 2, 3, 4, 5, 6, 7, 8].map(n => ({ value: String(n), label: String(n) }))}
+              />
+            </div>
+          </div>
+
+          {/* What AI generates */}
+          <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">What gets generated</p>
+            <ul className="space-y-1">
+              {[
+                "Title, category, description, objectives",
+                "Full scenario with context, ticket, and background",
+                "Hidden root cause + expected diagnosis & reasoning",
+                `${questionCount} graded questions with rubrics`,
+                "AI grader instructions for automatic scoring",
+              ].map(item => (
+                <li key={item} className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {genError && (
+            <div className="flex items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <p className="text-sm text-red-400">{genError}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-border shrink-0">
+          <Button
+            onClick={handleGenerate}
+            disabled={isGenerating || !prompt.trim()}
+            className="w-full bg-violet-600 hover:bg-violet-500 text-white"
+          >
+            {isGenerating ? (
+              <span className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                Generating module…
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Wand2 className="w-4 h-4" />
+                Generate Module
+              </span>
+            )}
+          </Button>
+          <p className="text-xs text-muted-foreground text-center mt-2">
+            Takes 10–20 seconds · You can edit everything after
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function ModuleBuilderPage() {
@@ -233,6 +454,8 @@ export default function ModuleBuilderPage() {
   const [isLoading, setIsLoading] = useState(!!editId);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [showAiPanel, setShowAiPanel] = useState(false);
+  const [aiGenerated, setAiGenerated] = useState(false);
 
   // Load existing module if editing
   useEffect(() => {
@@ -375,6 +598,14 @@ export default function ModuleBuilderPage() {
     });
   };
 
+  const handleAiGenerated = (newForm: ModuleForm, newQuestions: Question[]) => {
+    setForm(newForm);
+    setQuestions(newQuestions);
+    setAiGenerated(true);
+    setShowAiPanel(false);
+    setActiveTab("basics");
+  };
+
   if (isLoading) {
     return (
       <AdminLayout>
@@ -387,6 +618,13 @@ export default function ModuleBuilderPage() {
 
   return (
     <AdminLayout>
+      {showAiPanel && (
+        <AiGeneratePanel
+          onGenerated={handleAiGenerated}
+          onClose={() => setShowAiPanel(false)}
+        />
+      )}
+
       {/* Header */}
       <div className="mb-6 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -411,6 +649,16 @@ export default function ModuleBuilderPage() {
               <CheckCircle2 className="w-4 h-4" /> Saved
             </span>
           )}
+          {!editId && (
+            <Button
+              variant="outline"
+              onClick={() => setShowAiPanel(true)}
+              className="border-violet-500/40 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 gap-2"
+            >
+              <Sparkles className="w-4 h-4" />
+              Generate with AI
+            </Button>
+          )}
           <Button onClick={handleSave} disabled={isSaving} className="min-w-[90px]">
             {isSaving
               ? <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
@@ -418,6 +666,22 @@ export default function ModuleBuilderPage() {
           </Button>
         </div>
       </div>
+
+      {/* AI-generated banner */}
+      {aiGenerated && (
+        <div className="mb-4 flex items-center gap-3 rounded-lg border border-violet-500/30 bg-violet-500/10 px-4 py-3">
+          <Sparkles className="w-4 h-4 text-violet-400 shrink-0" />
+          <p className="text-sm text-violet-300 flex-1">
+            Module generated by AI — review each tab and edit anything before saving.
+          </p>
+          <button
+            onClick={() => setAiGenerated(false)}
+            className="text-violet-400 hover:text-violet-200"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {saveError && (
         <Card className="mb-4 border-red-500/30 bg-red-500/10">

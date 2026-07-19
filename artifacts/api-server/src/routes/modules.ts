@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { modules, moduleQuestions, organizationMemberships } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireLocalUser } from "../middleware/auth";
+import { generateModuleWithLLM } from "../services/llmModuleGeneratorService";
 
 const router: IRouter = Router();
 
@@ -289,6 +290,35 @@ router.delete("/modules/:id/questions/:qId", requireLocalUser, async (req, res):
     .where(and(eq(moduleQuestions.questionId, qId), eq(moduleQuestions.moduleId, moduleId)));
 
   res.status(204).send();
+});
+
+/**
+ * POST /api/modules/generate
+ * Generate a full module draft using AI from a plain-text prompt.
+ */
+router.post("/modules/generate", requireLocalUser, async (req, res): Promise<void> => {
+  try {
+    const { prompt, difficulty, questionCount } = req.body;
+    if (!prompt || typeof prompt !== "string" || prompt.trim().length < 5) {
+      res.status(400).json({ error: "prompt is required (min 5 characters)" });
+      return;
+    }
+
+    const result = await generateModuleWithLLM({
+      prompt: prompt.trim(),
+      difficulty,
+      questionCount: questionCount ? parseInt(questionCount, 10) : 3,
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    if (err.code === "NO_API_KEY") {
+      res.status(503).json({ error: err.message, code: "NO_API_KEY" });
+    } else {
+      console.error("POST /modules/generate error:", err);
+      res.status(500).json({ error: err.message ?? "Generation failed" });
+    }
+  }
 });
 
 export default router;
