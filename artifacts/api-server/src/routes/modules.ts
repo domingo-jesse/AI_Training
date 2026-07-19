@@ -131,7 +131,7 @@ router.post("/modules", requireLocalUser, async (req, res): Promise<void> => {
       difficulty,
       description: description ?? null,
       estimatedTime: estimatedTime ?? null,
-      status: status ?? "draft",
+      status: status ?? "published",
       scenarioTicket: scenarioTicket ?? null,
       scenarioContext: scenarioContext ?? null,
       hiddenRootCause: hiddenRootCause ?? null,

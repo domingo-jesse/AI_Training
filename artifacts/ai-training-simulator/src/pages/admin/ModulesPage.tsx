@@ -30,7 +30,6 @@ const DIFFICULTY_COLORS: Record<string, string> = {
 };
 const STATUS_COLORS: Record<string, string> = {
   published: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  draft:     "bg-slate-500/20 text-slate-400 border-slate-500/30",
   archived:  "bg-orange-500/20 text-orange-400 border-orange-500/30",
 };
 
@@ -225,7 +224,7 @@ export default function ModulesPage() {
           {/* Status */}
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground w-12">Status</span>
-            {["all", "published", "draft"].map(s => (
+            {["all", "published"].map(s => (
               <Chip
                 key={s}
                 active={statusFilter === s}
