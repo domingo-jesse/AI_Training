@@ -101,7 +101,6 @@ export default function LearnerWorkspacePage() {
 
   const startAttempt = async () => {
     if (!moduleId || !orgId) { setSubmitError("Missing module or organization context."); return; }
-    if (questions.length === 0) { setSubmitError("This module has no questions yet. Contact your admin."); return; }
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -302,12 +301,17 @@ export default function LearnerWorkspacePage() {
             </Card>
           )}
 
-          <Button size="lg" onClick={startAttempt} disabled={submitting} className="w-full">
+          <Button size="lg" onClick={startAttempt} disabled={submitting || questions.length === 0} className="w-full">
             {submitting
               ? <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2" />
               : <ChevronRight className="w-5 h-5 mr-2" />}
             Begin Simulation
           </Button>
+          {questions.length === 0 && (
+            <p className="text-center text-xs text-muted-foreground mt-2">
+              This module has no questions yet — check back later.
+            </p>
+          )}
         </div>
       </LearnerLayout>
     );
