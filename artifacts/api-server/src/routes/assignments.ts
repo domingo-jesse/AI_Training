@@ -33,7 +33,6 @@ router.get("/assignments/my", requireLocalUser, async (req, res): Promise<void> 
       and(
         eq(assignments.learnerId, localUser.userId),
         eq(assignments.isActive, true),
-        eq(modules.status, "published"),
       )
     )
     .orderBy(asc(assignments.assignedAt));
