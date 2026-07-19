@@ -3,6 +3,7 @@ import { db, users as usersTable } from "@workspace/db";
 import { eq, and, ne } from "drizzle-orm";
 import { requireAuth, requireLocalUser } from "../middleware/auth";
 import { syncUserFromClerk } from "../services/authService";
+import { clerkClient } from "@clerk/express";
 import bcrypt from "bcryptjs";
 
 const router: IRouter = Router();
@@ -15,15 +16,36 @@ const router: IRouter = Router();
 router.get("/users/me", requireAuth, async (req, res): Promise<void> => {
   const clerkUserId = (req as any).clerkUserId as string;
 
-  const [user] = await db
+  let [user] = await db
     .select()
     .from(usersTable)
     .where(eq(usersTable.id, clerkUserId))
     .limit(1);
 
+  // Auto-provision: if the user signed in via Clerk but isn't in the DB yet,
+  // fetch their profile from Clerk and sync them now.
   if (!user) {
-    res.status(404).json({ error: "User not found. Call /api/users/sync first." });
-    return;
+    try {
+      const clerkUser = await clerkClient.users.getUser(clerkUserId);
+      const email = clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress
+        ?? clerkUser.emailAddresses[0]?.emailAddress;
+
+      if (!email) {
+        res.status(404).json({ error: "Cannot provision user: no email on Clerk account." });
+        return;
+      }
+
+      const { user: provisioned } = await syncUserFromClerk({
+        clerkId: clerkUserId,
+        email,
+        name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || null,
+        authProvider: "clerk",
+      });
+      user = provisioned;
+    } catch (err) {
+      res.status(404).json({ error: "User not found and auto-provision failed." });
+      return;
+    }
   }
 
   const { passwordHash: _ph, ...profile } = user;
