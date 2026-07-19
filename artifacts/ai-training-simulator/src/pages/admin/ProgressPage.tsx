@@ -117,9 +117,9 @@ export default function ProgressPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Module breakdown */}
-        <Card className="lg:col-span-1">
+        <Card className="lg:col-span-2">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">By Module</CardTitle>
           </CardHeader>
@@ -152,7 +152,7 @@ export default function ProgressPage() {
         </Card>
 
         {/* All attempts table */}
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-3">
           <CardHeader className="pb-3 flex-row items-center justify-between">
             <CardTitle className="text-base">All Attempts</CardTitle>
             <input
