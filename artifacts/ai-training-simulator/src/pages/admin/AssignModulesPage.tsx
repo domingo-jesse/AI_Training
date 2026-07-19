@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import {
   Search, UserPlus, UserMinus, BookOpen, Users,
-  CheckCircle2, AlertCircle, Loader2, Calendar, ChevronLeft, Check,
+  CheckCircle2, AlertCircle, Loader2, Calendar, ChevronLeft, Check, X,
 } from "lucide-react";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -63,14 +63,12 @@ export default function AssignModulesPage() {
   const [moduleSearch, setModuleSearch] = useState("");
   const [learnerSearch, setLearnerSearch] = useState("");
 
-  // Multi-select state
-  const [selectedLearnerIds, setSelectedLearnerIds] = useState<Set<number>>(new Set());
+  // Selection: learnerId → due date string (empty = no due date)
+  const [selection, setSelection] = useState<Map<number, string>>(new Map());
 
   const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [unassignBusy, setUnassignBusy] = useState<Set<number>>(new Set());
-  const [dueDate, setDueDate] = useState("");
-  const [showDueDateInput, setShowDueDateInput] = useState(false);
 
   const showToast = (type: "ok" | "err", text: string) => {
     setToast({ type, text });
@@ -91,11 +89,8 @@ export default function AssignModulesPage() {
     }).finally(() => setLoading(false));
   }, [orgId]);
 
-  // Clear selection when module changes
   useEffect(() => {
-    setSelectedLearnerIds(new Set());
-    setDueDate("");
-    setShowDueDateInput(false);
+    setSelection(new Map());
   }, [selectedModuleId]);
 
   const selectedModule = modules.find(m => m.moduleId === selectedModuleId) ?? null;
@@ -119,31 +114,42 @@ export default function AssignModulesPage() {
     ? assignments.filter(a => a.moduleId === selectedModuleId).length
     : 0;
 
-  // Toggle a learner in the selection (only unassigned learners are selectable)
   const toggleLearner = (learnerId: number) => {
-    if (assignmentFor(learnerId)) return; // already assigned, not selectable
-    setSelectedLearnerIds(prev => {
-      const next = new Set(prev);
+    if (assignmentFor(learnerId)) return;
+    setSelection(prev => {
+      const next = new Map(prev);
       if (next.has(learnerId)) next.delete(learnerId);
-      else next.add(learnerId);
+      else next.set(learnerId, "");
       return next;
     });
   };
 
-  // Select all visible unassigned learners
-  const selectAll = () => {
-    const ids = filteredLearners.filter(l => !assignmentFor(l.userId)).map(l => l.userId);
-    setSelectedLearnerIds(new Set(ids));
+  const setLearnerDueDate = (learnerId: number, date: string) => {
+    setSelection(prev => {
+      const next = new Map(prev);
+      next.set(learnerId, date);
+      return next;
+    });
   };
 
-  const clearSelection = () => setSelectedLearnerIds(new Set());
+  const unassignedFiltered = filteredLearners.filter(l => !assignmentFor(l.userId));
+  const allVisibleSelected = unassignedFiltered.length > 0 && unassignedFiltered.every(l => selection.has(l.userId));
 
-  // Confirm and assign selected learners
+  const selectAll = () => {
+    setSelection(prev => {
+      const next = new Map(prev);
+      unassignedFiltered.forEach(l => { if (!next.has(l.userId)) next.set(l.userId, ""); });
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelection(new Map());
+
   const handleAssignSelected = async () => {
-    if (!selectedModuleId || !orgId || selectedLearnerIds.size === 0) return;
+    if (!selectedModuleId || !orgId || selection.size === 0) return;
     setAssigning(true);
     let successCount = 0;
-    for (const learnerId of selectedLearnerIds) {
+    for (const [learnerId, dueDate] of selection.entries()) {
       try {
         const r = await fetch(`${base}/api/assignments`, {
           method: "POST",
@@ -158,14 +164,11 @@ export default function AssignModulesPage() {
         }
       } catch {}
     }
-    setSelectedLearnerIds(new Set());
-    setDueDate("");
-    setShowDueDateInput(false);
+    setSelection(new Map());
     setAssigning(false);
     showToast("ok", `Assigned ${successCount} learner${successCount !== 1 ? "s" : ""}`);
   };
 
-  // Unassign a single already-assigned learner (immediate, no selection needed)
   const handleUnassign = async (learner: Member) => {
     const existing = assignmentFor(learner.userId);
     if (!existing) return;
@@ -182,9 +185,6 @@ export default function AssignModulesPage() {
       setUnassignBusy(prev => { const s = new Set(prev); s.delete(learner.userId); return s; });
     }
   };
-
-  const unassignedFiltered = filteredLearners.filter(l => !assignmentFor(l.userId));
-  const allVisibleSelected = unassignedFiltered.length > 0 && unassignedFiltered.every(l => selectedLearnerIds.has(l.userId));
 
   if (loading) {
     return (
@@ -213,7 +213,7 @@ export default function AssignModulesPage() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-display font-bold">Assign Modules</h1>
-        <p className="text-muted-foreground mt-1">Select a module, pick learners, then confirm the assignment.</p>
+        <p className="text-muted-foreground mt-1">Select a module, pick learners, set due dates, then confirm.</p>
       </div>
 
       <div className="flex gap-5 h-[calc(100vh-11rem)]">
@@ -298,13 +298,13 @@ export default function AssignModulesPage() {
                 </p>
               </div>
 
-              {/* Search + select-all row */}
+              {/* Search + select-all */}
               <div className="flex items-center gap-2 mb-3">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     value={learnerSearch}
-                    onChange={e => { setLearnerSearch(e.target.value); setSelectedLearnerIds(new Set()); }}
+                    onChange={e => { setLearnerSearch(e.target.value); }}
                     placeholder="Filter by name or email…"
                     className="pl-9"
                   />
@@ -319,7 +319,7 @@ export default function AssignModulesPage() {
                 )}
               </div>
 
-              {/* Learner rows — scrollable area */}
+              {/* Learner rows */}
               <div className="flex-1 overflow-y-auto space-y-2 pr-1 pb-2">
                 {filteredLearners.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-14 text-center border border-dashed border-border rounded-xl">
@@ -333,77 +333,103 @@ export default function AssignModulesPage() {
                 {filteredLearners.map(learner => {
                   const existing = assignmentFor(learner.userId);
                   const isAssigned = !!existing;
-                  const isSelected = selectedLearnerIds.has(learner.userId);
+                  const isSelected = selection.has(learner.userId);
+                  const learnerDueDate = selection.get(learner.userId) ?? "";
                   const isBusyUnassign = unassignBusy.has(learner.userId);
 
                   return (
                     <div
                       key={learner.userId}
-                      onClick={() => !isAssigned && toggleLearner(learner.userId)}
-                      className={`flex items-center gap-4 rounded-xl border px-5 py-4 transition-all select-none ${
+                      className={`rounded-xl border transition-all ${
                         isAssigned
-                          ? "border-emerald-500/30 bg-emerald-500/5 cursor-default"
+                          ? "border-emerald-500/30 bg-emerald-500/5"
                           : isSelected
-                            ? "border-primary bg-primary/10 ring-1 ring-primary/20 cursor-pointer"
-                            : "border-border bg-card hover:border-primary/30 hover:bg-muted/20 cursor-pointer"
+                            ? "border-primary bg-primary/10 ring-1 ring-primary/20"
+                            : "border-border bg-card hover:border-primary/30 hover:bg-muted/20"
                       }`}
                     >
-                      {/* Checkbox / avatar */}
-                      <div className="shrink-0 relative">
-                        <div className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-base transition-all ${
+                      {/* Main row */}
+                      <div
+                        onClick={() => !isAssigned && toggleLearner(learner.userId)}
+                        className={`flex items-center gap-4 px-5 py-4 select-none ${!isAssigned ? "cursor-pointer" : "cursor-default"}`}
+                      >
+                        {/* Avatar */}
+                        <div className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-base shrink-0 transition-all ${
                           isAssigned
                             ? "bg-emerald-500/20 text-emerald-400"
                             : isSelected
                               ? "bg-primary text-primary-foreground"
                               : "bg-primary/15 text-primary"
                         }`}>
-                          {isSelected && !isAssigned
-                            ? <Check className="w-5 h-5" />
-                            : initials(learner.name)
-                          }
+                          {isSelected && !isAssigned ? <Check className="w-5 h-5" /> : initials(learner.name)}
                         </div>
-                      </div>
 
-                      {/* Name + email */}
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-base font-semibold leading-tight truncate ${isSelected ? "text-primary" : "text-foreground"}`}>
-                          {learner.name}
-                        </p>
-                        <p className="text-sm text-muted-foreground truncate mt-0.5">
-                          {learner.email ?? "—"}
-                        </p>
-                        {isAssigned && existing?.dueDate && (
-                          <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
-                            <Calendar className="w-3 h-3" /> Due {fmt(existing.dueDate)}
+                        {/* Name + email */}
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-base font-semibold leading-tight truncate ${isSelected ? "text-primary" : "text-foreground"}`}>
+                            {learner.name}
                           </p>
+                          <p className="text-sm text-muted-foreground truncate mt-0.5">{learner.email ?? "—"}</p>
+                          {isAssigned && existing?.dueDate && (
+                            <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                              <Calendar className="w-3 h-3" /> Due {fmt(existing.dueDate)}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Right side */}
+                        {isAssigned ? (
+                          <div className="flex items-center gap-3 shrink-0">
+                            <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 bg-emerald-500/10 text-xs">
+                              Assigned
+                            </Badge>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isBusyUnassign}
+                              onClick={e => { e.stopPropagation(); handleUnassign(learner); }}
+                              className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50"
+                            >
+                              {isBusyUnassign
+                                ? <Loader2 className="w-4 h-4 animate-spin" />
+                                : <><UserMinus className="w-4 h-4 mr-1.5" /> Unassign</>
+                              }
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className={`text-xs shrink-0 ${isSelected ? "text-primary font-medium" : "text-muted-foreground"}`}>
+                            {isSelected ? "Selected" : "Click to select"}
+                          </span>
                         )}
                       </div>
 
-                      {/* Right side */}
-                      {isAssigned ? (
-                        <div className="flex items-center gap-3 shrink-0">
-                          <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 bg-emerald-500/10 text-xs">
-                            Assigned
-                          </Badge>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={isBusyUnassign}
-                            onClick={e => { e.stopPropagation(); handleUnassign(learner); }}
-                            className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50"
-                          >
-                            {isBusyUnassign
-                              ? <Loader2 className="w-4 h-4 animate-spin" />
-                              : <><UserMinus className="w-4 h-4 mr-1.5" /> Unassign</>
-                            }
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="shrink-0">
-                          {isSelected
-                            ? <span className="text-xs font-medium text-primary">Selected</span>
-                            : <span className="text-xs text-muted-foreground">Click to select</span>
-                          }
+                      {/* Due date row — shown when selected */}
+                      {isSelected && (
+                        <div
+                          className="flex items-center gap-3 px-5 pb-4 pt-0"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
+                          <div className="flex items-center gap-2 flex-1">
+                            <label className="text-xs text-muted-foreground whitespace-nowrap">Due date</label>
+                            <input
+                              type="date"
+                              value={learnerDueDate}
+                              onChange={e => setLearnerDueDate(learner.userId, e.target.value)}
+                              className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary w-44"
+                            />
+                            {learnerDueDate && (
+                              <button
+                                onClick={() => setLearnerDueDate(learner.userId, "")}
+                                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors"
+                              >
+                                <X className="w-3 h-3" /> Clear
+                              </button>
+                            )}
+                            {!learnerDueDate && (
+                              <span className="text-xs text-muted-foreground italic">Optional — leave blank for no deadline</span>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -412,50 +438,26 @@ export default function AssignModulesPage() {
               </div>
 
               {/* ── Sticky assignment bar ── */}
-              {selectedLearnerIds.size > 0 && (
-                <div className="mt-3 flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/10 px-5 py-3.5">
+              {selection.size > 0 && (
+                <div className="mt-3 flex items-center gap-4 rounded-xl border border-primary/30 bg-primary/10 px-5 py-3.5">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-foreground">
-                      {selectedLearnerIds.size} learner{selectedLearnerIds.size !== 1 ? "s" : ""} selected
+                      {selection.size} learner{selection.size !== 1 ? "s" : ""} selected
                     </p>
-                    {showDueDateInput ? (
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                        <input
-                          type="date"
-                          value={dueDate}
-                          onChange={e => setDueDate(e.target.value)}
-                          className="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                        />
-                        {dueDate && (
-                          <button onClick={() => setDueDate("")} className="text-xs text-muted-foreground hover:text-foreground">
-                            Clear
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setShowDueDateInput(true)}
-                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mt-1 transition-colors"
-                      >
-                        <Calendar className="w-3 h-3" /> Add due date (optional)
-                      </button>
-                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {Array.from(selection.values()).filter(Boolean).length} of {selection.size} have a due date set
+                    </p>
                   </div>
                   <button
                     onClick={clearSelection}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors px-1"
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
                     Cancel
                   </button>
-                  <Button
-                    onClick={handleAssignSelected}
-                    disabled={assigning}
-                    className="shrink-0"
-                  >
+                  <Button onClick={handleAssignSelected} disabled={assigning} className="shrink-0">
                     {assigning
                       ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Assigning…</>
-                      : <><UserPlus className="w-4 h-4 mr-2" /> Assign {selectedLearnerIds.size}</>
+                      : <><UserPlus className="w-4 h-4 mr-2" /> Assign {selection.size}</>
                     }
                   </Button>
                 </div>
