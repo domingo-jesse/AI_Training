@@ -322,8 +322,7 @@ export default function AccountsPage() {
               {/* Column headers */}
               <div className="flex items-center gap-3 px-5 py-2 border-b border-border/40 text-xs text-muted-foreground font-medium uppercase tracking-wide">
                 <span className="w-9 shrink-0" />
-                <span className="w-44 shrink-0">Name</span>
-                <span className="flex-1 min-w-0">Email</span>
+                <span className="flex-1 min-w-0">Name</span>
                 <span className="w-28 shrink-0">Role</span>
                 <span className="w-36 shrink-0" />
               </div>
@@ -341,16 +340,11 @@ export default function AccountsPage() {
                         </div>
 
                         {/* Name */}
-                        <div className="w-44 shrink-0 min-w-0">
+                        <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{u.name}</p>
                           {u.authProvider === "pending" && (
                             <span className="text-xs text-amber-400">Pending sign-in</span>
                           )}
-                        </div>
-
-                        {/* Email — full, wraps if needed */}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-muted-foreground break-all">{u.email ?? "—"}</p>
                         </div>
 
                         {/* Role dropdown */}
