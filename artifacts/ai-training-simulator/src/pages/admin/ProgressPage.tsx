@@ -129,18 +129,14 @@ export default function ProgressPage() {
             )}
             {Object.values(byModule).map(m => (
               <div key={m.title}>
-                <div className="flex items-center justify-between mb-1.5 gap-2">
-                  <p className="text-sm font-medium truncate flex-1" title={m.title}>{m.title}</p>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-muted-foreground">
-                      {m.graded}/{m.total} graded
+                <p className="text-sm font-medium mb-0.5 leading-snug" title={m.title}>{m.title}</p>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs text-muted-foreground">{m.graded}/{m.total} graded</span>
+                  {m.avgScore != null && (
+                    <span className="text-xs font-medium text-foreground bg-muted px-1.5 py-0.5 rounded">
+                      avg {m.avgScore}
                     </span>
-                    {m.avgScore != null && (
-                      <span className="text-xs font-medium text-foreground bg-muted px-1.5 py-0.5 rounded">
-                        avg {m.avgScore}
-                      </span>
-                    )}
-                  </div>
+                  )}
                 </div>
                 <Progress
                   value={m.total > 0 ? (m.graded / m.total) * 100 : 0}
