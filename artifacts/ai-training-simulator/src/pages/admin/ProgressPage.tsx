@@ -103,7 +103,7 @@ export default function ProgressPage() {
         {[
           { icon: BookOpen,     label: "Total Attempts",  value: data?.total ?? 0,     color: "text-primary" },
           { icon: Clock,        label: "In Progress",     value: data?.inProgress ?? 0, color: "text-blue-400" },
-          { icon: AlertCircle,  label: "Pending Review",  value: data?.submitted ?? 0,  color: "text-amber-400" },
+          { icon: AlertCircle,  label: "Needs Grading",   value: data?.submitted ?? 0,  color: "text-amber-400" },
           { icon: CheckCircle2, label: "Graded",          value: data?.graded ?? 0,     color: "text-emerald-400" },
           { icon: Star,         label: "Avg Score",       value: data?.avgScore != null ? `${Math.round(data.avgScore)}` : "—", color: "text-violet-400" },
         ].map(({ icon: Icon, label, value, color }) => (
@@ -111,7 +111,7 @@ export default function ProgressPage() {
             <CardContent className="p-5">
               <Icon className={`w-5 h-5 ${color} mb-3`} />
               <p className="text-2xl font-bold">{value}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{label}</p>
             </CardContent>
           </Card>
         ))}
@@ -129,21 +129,23 @@ export default function ProgressPage() {
             )}
             {Object.values(byModule).map(m => (
               <div key={m.title}>
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm font-medium truncate">{m.title}</p>
-                  {m.avgScore != null && (
-                    <span className="text-xs text-muted-foreground ml-2 shrink-0">avg {m.avgScore}</span>
-                  )}
+                <div className="flex items-center justify-between mb-1.5 gap-2">
+                  <p className="text-sm font-medium truncate flex-1" title={m.title}>{m.title}</p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-muted-foreground">
+                      {m.graded}/{m.total} graded
+                    </span>
+                    {m.avgScore != null && (
+                      <span className="text-xs font-medium text-foreground bg-muted px-1.5 py-0.5 rounded">
+                        avg {m.avgScore}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Progress
-                    value={m.total > 0 ? (m.graded / m.total) * 100 : 0}
-                    className="h-1.5 flex-1"
-                  />
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    {m.graded}/{m.total}
-                  </span>
-                </div>
+                <Progress
+                  value={m.total > 0 ? (m.graded / m.total) * 100 : 0}
+                  className="h-1.5"
+                />
               </div>
             ))}
           </CardContent>
