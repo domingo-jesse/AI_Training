@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { modules, moduleQuestions, organizationMemberships } from "@workspace/db";
+import { modules, moduleQuestions, organizationMemberships, assignments } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireLocalUser } from "../middleware/auth";
 import { generateModuleWithLLM } from "../services/llmModuleGeneratorService";
@@ -75,7 +75,27 @@ router.get("/modules/:id", requireLocalUser, async (req, res): Promise<void> => 
   const [mod] = await db.select().from(modules).where(eq(modules.moduleId, moduleId)).limit(1);
   if (!mod) { res.status(404).json({ error: "Module not found" }); return; }
 
-  if (mod.organizationId && !(await assertOrgAdmin(localUser, mod.organizationId, res))) return;
+  // Admins can always access; learners can access if they have an active assignment for this module
+  const isAdmin = mod.organizationId
+    ? await assertOrgAdmin(localUser, mod.organizationId, { status: () => ({ json: () => {} }) } as any)
+    : false;
+
+  if (!isAdmin) {
+    const [assignment] = await db
+      .select({ assignmentId: assignments.assignmentId })
+      .from(assignments)
+      .where(and(
+        eq(assignments.moduleId, moduleId),
+        eq(assignments.learnerId, localUser.userId),
+        eq(assignments.isActive, true),
+      ))
+      .limit(1);
+
+    if (!assignment) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+  }
 
   const questions = await db
     .select()
