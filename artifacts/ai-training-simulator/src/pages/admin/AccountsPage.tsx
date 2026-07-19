@@ -500,40 +500,41 @@ export default function AccountsPage() {
                           </div>
 
                           {/* Team / group assignment */}
-                          {groups.length > 0 && (
-                            <div className="space-y-2">
-                              <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                                <Tag className="w-3 h-3" /> Teams
-                              </Label>
+                          <div className="space-y-2">
+                            <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                              <Tag className="w-3 h-3" /> Teams
+                            </Label>
+                            {groups.length === 0 ? (
+                              <p className="text-xs text-muted-foreground italic">
+                                No teams created yet. Go to the <a href="/admin/groups" className="underline hover:text-foreground">Groups page</a> to create one.
+                              </p>
+                            ) : (
                               <div className="flex flex-wrap gap-2">
                                 {groups.map(g => {
-                                  const active = editDraft.groupIds.has(g.groupId);
+                                  const isIn = editDraft.groupIds.has(g.groupId);
                                   return (
                                     <button
                                       key={g.groupId}
                                       type="button"
                                       onClick={() => toggleGroup(g.groupId)}
                                       className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-                                        active
+                                        isIn
                                           ? "border-transparent text-white"
                                           : "border-border text-muted-foreground hover:text-foreground hover:border-border/80"
                                       }`}
-                                      style={active ? { backgroundColor: g.color, borderColor: g.color } : {}}
+                                      style={isIn ? { backgroundColor: g.color, borderColor: g.color } : {}}
                                     >
-                                      {!active && (
+                                      {!isIn && (
                                         <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
                                       )}
-                                      {active && <Check className="w-3 h-3 shrink-0" />}
+                                      {isIn && <Check className="w-3 h-3 shrink-0" />}
                                       {g.name}
                                     </button>
                                   );
                                 })}
                               </div>
-                              {groups.length === 0 && (
-                                <p className="text-xs text-muted-foreground">No teams created yet. Create teams on the Groups page.</p>
-                              )}
-                            </div>
-                          )}
+                            )}
+                          </div>
 
                           {/* Actions */}
                           <div className="flex gap-2">
