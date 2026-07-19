@@ -318,21 +318,21 @@ export default function AccountsPage() {
               </CardHeader>
 
               {/* Column headers */}
-              <div className="grid grid-cols-[2.5rem_1fr_1fr_9rem_7rem_6rem_2.5rem] gap-3 px-5 py-2 border-b border-border/40 text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                <span />
-                <span>Name</span>
-                <span>Email</span>
-                <span>Role</span>
-                <span>Status</span>
-                <span>Added</span>
-                <span />
+              <div className="flex items-center gap-3 px-5 py-2 border-b border-border/40 text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                <span className="w-9 shrink-0" />
+                <span className="w-36 shrink-0">Name</span>
+                <span className="flex-1 min-w-0">Email</span>
+                <span className="w-28 shrink-0">Role</span>
+                <span className="w-20 shrink-0">Status</span>
+                <span className="w-24 shrink-0">Added</span>
+                <span className="w-8 shrink-0" />
               </div>
 
               <div className="divide-y divide-border/40">
                 {active.map(u => (
                   <div
                     key={u.userId}
-                    className="grid grid-cols-[2.5rem_1fr_1fr_9rem_7rem_6rem_2.5rem] gap-3 items-center px-5 py-3 hover:bg-muted/20 transition-colors group"
+                    className="flex items-center gap-3 px-5 py-3 hover:bg-muted/20 transition-colors group"
                   >
                     {/* Avatar */}
                     <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0 select-none">
@@ -340,7 +340,7 @@ export default function AccountsPage() {
                     </div>
 
                     {/* Editable name */}
-                    <div className="min-w-0">
+                    <div className="w-36 shrink-0 min-w-0">
                       <EditableCell value={u.name} onSave={name => patch(u.userId, { name })} />
                       {u.authProvider === "pending" && (
                         <span className="text-xs text-amber-400">Pending sign-in</span>
@@ -348,19 +348,19 @@ export default function AccountsPage() {
                     </div>
 
                     {/* Editable email */}
-                    <div className="min-w-0">
+                    <div className="flex-1 min-w-0 overflow-hidden">
                       <EditableCell value={u.email ?? ""} onSave={email => patch(u.userId, { email })} />
                     </div>
 
-                    {/* Role dropdown */}
-                    <div>
+                    {/* Role dropdown — fixed width, no overflow */}
+                    <div className="w-28 shrink-0">
                       {patchingId === u.userId ? (
                         <RefreshCw className="w-4 h-4 text-muted-foreground animate-spin" />
                       ) : (
                         <select
                           value={u.membershipRole}
                           onChange={e => patch(u.userId, { role: e.target.value })}
-                          className={`h-7 rounded border border-input bg-background px-2 pr-6 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-ring capitalize cursor-pointer appearance-none ${ROLE_COLORS[u.membershipRole] ?? ""}`}
+                          className={`w-full h-7 rounded border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-ring capitalize cursor-pointer ${ROLE_COLORS[u.membershipRole] ?? ""}`}
                         >
                           {MEMBERSHIP_ROLE_OPTIONS.map(r => (
                             <option key={r} value={r} className="bg-background text-foreground capitalize">{r}</option>
@@ -370,20 +370,20 @@ export default function AccountsPage() {
                     </div>
 
                     {/* Status */}
-                    <div>
+                    <div className="w-20 shrink-0">
                       <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
                         Active
                       </Badge>
                     </div>
 
                     {/* Added date */}
-                    <div className="text-xs text-muted-foreground">{fmt(u.createdAt)}</div>
+                    <div className="w-24 shrink-0 text-xs text-muted-foreground">{fmt(u.createdAt)}</div>
 
                     {/* Deactivate */}
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="w-8 h-8 shrink-0 text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                       title="Deactivate user"
                       disabled={patchingId === u.userId}
                       onClick={() => {
