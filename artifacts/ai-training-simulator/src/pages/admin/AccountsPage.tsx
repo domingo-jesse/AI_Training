@@ -278,9 +278,9 @@ export default function AccountsPage() {
 
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium leading-tight">{u.name}</p>
-                          {u.authProvider === "pending" && (
-                            <p className="text-xs text-amber-400 mt-0.5">Pending first sign-in</p>
-                          )}
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                            {u.authProvider === "pending" ? <span className="text-amber-400">Pending first sign-in</span> : (u.email ?? "—")}
+                          </p>
                         </div>
 
                         <RolePill role={u.membershipRole} />
