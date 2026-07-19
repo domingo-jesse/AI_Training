@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Users, UserPlus, RefreshCw, AlertCircle, X,
-  ShieldOff, ShieldCheck, Pencil, Check, CheckCircle2,
+  ShieldOff, ShieldCheck, Pencil, Check, CheckCircle2, Search,
 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 
@@ -110,6 +110,7 @@ export default function AccountsPage() {
   const [editDraft, setEditDraft] = useState({ name: "", email: "", role: "learner" as Role });
   const [patchingId, setPatchingId] = useState<number | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<AdminUser | null>(null);
+  const [search, setSearch] = useState("");
 
   const load = () => {
     if (!orgId) return;
@@ -184,8 +185,15 @@ export default function AccountsPage() {
     if (ok) setEditingId(null);
   };
 
-  const active = users.filter(u => u.isActive !== false && u.membershipStatus === "active");
+  const allActive = users.filter(u => u.isActive !== false && u.membershipStatus === "active");
   const inactive = users.filter(u => u.isActive === false || u.membershipStatus === "inactive");
+  const q = search.toLowerCase();
+  const active = allActive.filter(u =>
+    !q ||
+    u.name.toLowerCase().includes(q) ||
+    (u.email ?? "").toLowerCase().includes(q) ||
+    u.membershipRole.toLowerCase().includes(q)
+  );
 
   if (orgLoading) return (
     <AdminLayout>
@@ -220,10 +228,24 @@ export default function AccountsPage() {
         <div>
           <h1 className="text-2xl font-display font-bold">Account Management</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {currentOrg.organizationName} · {active.length} active{inactive.length > 0 ? ` · ${inactive.length} deactivated` : ""}
+            {currentOrg.organizationName} · {allActive.length} active{inactive.length > 0 ? ` · ${inactive.length} deactivated` : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search name, email, role…"
+              className="h-8 pl-8 pr-3 rounded-md border border-input bg-background text-sm w-48 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={load} disabled={loading} title="Refresh">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </Button>

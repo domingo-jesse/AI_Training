@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import {
   CheckSquare, User, BookOpen, Clock, ChevronRight, X,
-  CheckCircle2, AlertCircle, Send, RefreshCw, Sparkles, Info
+  CheckCircle2, AlertCircle, Send, RefreshCw, Sparkles, Info, Search
 } from "lucide-react";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -99,6 +99,7 @@ export default function GradingPage() {
   const [attempts, setAttempts] = useState<AttemptSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"pending_review" | "all">("pending_review");
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<AttemptDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [gradeForm, setGradeForm] = useState<GradeForm>(EMPTY_GRADE);
@@ -234,18 +235,40 @@ export default function GradingPage() {
 
   const totalMaxPoints = selected?.questions.reduce((s, q) => s + q.maxPoints, 0) ?? 0;
 
+  const sq = search.toLowerCase();
+  const filteredAttempts = attempts.filter(a =>
+    !sq ||
+    a.learnerName.toLowerCase().includes(sq) ||
+    (a.learnerEmail ?? "").toLowerCase().includes(sq) ||
+    a.moduleTitle.toLowerCase().includes(sq)
+  );
+
   return (
     <AdminLayout>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold">Grading Center</h1>
           <p className="text-muted-foreground mt-1">Review and grade learner submissions.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search learner or module…"
+              className="h-8 pl-8 pr-3 rounded-md border border-input bg-background text-sm w-52 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
           {(["pending_review", "all"] as const).map(f => (
             <Button key={f} size="sm" variant={filter === f ? "default" : "outline"}
               onClick={() => setFilter(f)}>
-              {f === "pending_review" ? "Pending Review" : "All Submissions"}
+              {f === "pending_review" ? "Needs Grading" : "All"}
             </Button>
           ))}
         </div>
@@ -259,16 +282,18 @@ export default function GradingPage() {
               <div className="w-7 h-7 rounded-full border-4 border-primary border-t-transparent animate-spin" />
             </div>
           )}
-          {!loading && attempts.length === 0 && (
+          {!loading && filteredAttempts.length === 0 && (
             <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
               <CheckSquare className="w-10 h-10 text-muted-foreground mb-3" />
-              <p className="font-medium">No submissions</p>
+              <p className="font-medium">{search ? "No matches" : "No submissions"}</p>
               <p className="text-sm text-muted-foreground mt-1">
-                {filter === "pending_review" ? "All caught up!" : "No attempts yet."}
+                {search
+                  ? <button className="underline" onClick={() => setSearch("")}>Clear filter</button>
+                  : filter === "pending_review" ? "All caught up!" : "No attempts yet."}
               </p>
             </Card>
           )}
-          {attempts.map(a => {
+          {filteredAttempts.map(a => {
             const cfg = STATUS_CONFIG[a.resultStatus] ?? STATUS_CONFIG["pending_review"];
             return (
               <Card

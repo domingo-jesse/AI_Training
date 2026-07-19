@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import {
   FileText, Plus, Trash2, User, BookOpen, Calendar,
-  AlertCircle, CheckCircle2, RefreshCw, X
+  AlertCircle, CheckCircle2, RefreshCw, X, Search
 } from "lucide-react";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -64,6 +64,7 @@ export default function AssignmentsPage() {
   const [deleting, setDeleting] = useState<number | null>(null);
 
   const [form, setForm] = useState({ moduleId: "", learnerId: "", dueDate: "" });
+  const [search, setSearch] = useState("");
 
   const load = () => {
     if (!orgId) return;
@@ -126,16 +127,40 @@ export default function AssignmentsPage() {
   const learnerOptions = members;
   const publishedModules = modules;
 
+  const q = search.toLowerCase();
+  const filtered = assignments.filter(a =>
+    !q ||
+    a.learnerName.toLowerCase().includes(q) ||
+    (a.learnerEmail ?? "").toLowerCase().includes(q) ||
+    a.moduleTitle.toLowerCase().includes(q)
+  );
+
   return (
     <AdminLayout>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold">Assignments</h1>
           <p className="text-muted-foreground mt-1">Assign training modules to learners in your organization.</p>
         </div>
-        <Button size="sm" onClick={() => { setShowForm(true); setSaveMsg(null); }}>
-          <Plus className="w-4 h-4 mr-2" /> New Assignment
-        </Button>
+        <div className="flex items-center gap-2 ml-auto">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search learner or module…"
+              className="h-8 pl-8 pr-3 rounded-md border border-input bg-background text-sm w-52 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          <Button size="sm" onClick={() => { setShowForm(true); setSaveMsg(null); }}>
+            <Plus className="w-4 h-4 mr-2" /> New Assignment
+          </Button>
+        </div>
       </div>
 
       {/* Create form */}
@@ -225,9 +250,14 @@ export default function AssignmentsPage() {
             <Plus className="w-4 h-4 mr-2" /> Create First Assignment
           </Button>
         </Card>
+      ) : filtered.length === 0 ? (
+        <div className="py-16 text-center text-muted-foreground text-sm">
+          No assignments match <span className="font-medium">"{search}"</span>.{" "}
+          <button className="underline" onClick={() => setSearch("")}>Clear filter</button>
+        </div>
       ) : (
         <div className="space-y-3">
-          {assignments.map(a => (
+          {filtered.map(a => (
             <Card key={a.assignmentId} className="hover:border-border/80 transition-colors">
               <CardContent className="flex items-center gap-5 py-4 px-6">
                 {/* Learner */}
