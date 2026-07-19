@@ -281,7 +281,7 @@ export default function AssignModulesPage() {
                     <Badge variant="outline" className={`text-xs ${DIFF_COLORS[mod.difficulty] ?? ""}`}>
                       {mod.difficulty}
                     </Badge>
-                    <Badge variant="outline" className={`text-xs ${mod.status === "published" ? "border-emerald-500/30 text-emerald-400" : "border-muted-foreground/30 text-muted-foreground"}`}>
+                    <Badge variant="outline" className={`text-xs ${mod.status === "active" ? "border-emerald-500/30 text-emerald-400" : "border-muted-foreground/30 text-muted-foreground"}`}>
                       {mod.status}
                     </Badge>
                     {count > 0 && (

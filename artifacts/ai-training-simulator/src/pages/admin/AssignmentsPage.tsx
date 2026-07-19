@@ -258,7 +258,7 @@ export default function AssignmentsPage() {
     });
   }, [assignments, search, filterUser, filterModule, filterDue, filterAssigned]);
 
-  const publishedModules = modules.filter(m => !m.status || m.status === "published");
+  const publishedModules = modules.filter(m => !m.status || m.status === "active");
 
   return (
     <AdminLayout>

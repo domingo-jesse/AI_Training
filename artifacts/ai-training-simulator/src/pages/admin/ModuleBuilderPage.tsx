@@ -53,7 +53,7 @@ interface ModuleForm {
 
 const EMPTY_FORM: ModuleForm = {
   title: "", category: "", difficulty: "intermediate", description: "",
-  estimatedTime: "", status: "published", scenarioTicket: "", scenarioContext: "",
+  estimatedTime: "", status: "active", scenarioTicket: "", scenarioContext: "",
   hiddenRootCause: "", expectedDiagnosis: "", expectedReasoningPath: "",
   expectedNextSteps: "", lessonTakeaway: "", learningObjectives: "",
   scoringStyle: "manual", llmScoringEnabled: false, llmGraderInstructions: "",
@@ -746,7 +746,7 @@ export default function ModuleBuilderPage() {
                 value={form.status}
                 onChange={set("status")}
                 options={[
-                  { value: "published", label: "Published" },
+                  { value: "active", label: "Active" },
                   { value: "archived", label: "Archived" },
                 ]}
               />

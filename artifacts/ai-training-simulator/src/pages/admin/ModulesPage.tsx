@@ -29,8 +29,8 @@ const DIFFICULTY_COLORS: Record<string, string> = {
   advanced:     "bg-red-500/20 text-red-400 border-red-500/30",
 };
 const STATUS_COLORS: Record<string, string> = {
-  published: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  archived:  "bg-orange-500/20 text-orange-400 border-orange-500/30",
+  active:   "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  archived: "bg-orange-500/20 text-orange-400 border-orange-500/30",
 };
 
 type SortKey = "newest" | "oldest" | "az" | "za";
@@ -108,7 +108,7 @@ export default function ModulesPage() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     let list = modules.filter(m => {
-      if (m.status === "archived") return false;           // always excluded from main list
+      if (statusFilter === "all" && m.status === "archived") return false; // archived hidden from main list unless filtered
       if (q && !m.title.toLowerCase().includes(q)) return false;
       if (statusFilter !== "all" && m.status !== statusFilter) return false;
       if (diffFilter   !== "all" && m.difficulty !== diffFilter) return false;
@@ -224,14 +224,14 @@ export default function ModulesPage() {
           {/* Status */}
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground w-12">Status</span>
-            {["all", "published"].map(s => (
+            {["all", "active", "archived"].map(s => (
               <Chip
                 key={s}
                 active={statusFilter === s}
                 onClick={() => setStatus(s)}
                 color={
-                  s === "published" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40" :
-                  s === "draft"     ? "bg-slate-500/20 text-slate-400 border-slate-500/40" :
+                  s === "active"   ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40" :
+                  s === "archived" ? "bg-orange-500/20 text-orange-400 border-orange-500/40" :
                   undefined
                 }
               >
