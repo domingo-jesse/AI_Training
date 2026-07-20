@@ -8,9 +8,13 @@ import { generateModuleWithLLM } from "../services/llmModuleGeneratorService";
 const router: IRouter = Router();
 
 const ADMIN_ROLES = ["owner", "admin", "manager"];
+const MAX_LIMIT = 200;
+const DEFAULT_LIMIT = 100;
 
 async function assertOrgAdmin(localUser: any, orgId: number, res: any): Promise<boolean> {
   if (isPlatformOwner(localUser)) return true;
+  // Trust role from req.localUser when possible — avoids an extra DB hit
+  if (localUser.organizationId === orgId && ADMIN_ROLES.includes(localUser.role)) return true;
 
   const [m] = await db
     .select({ role: organizationMemberships.role })
@@ -31,7 +35,7 @@ async function assertOrgAdmin(localUser: any, orgId: number, res: any): Promise<
   return true;
 }
 
-/** GET /api/modules?orgId=1 */
+/** GET /api/modules?orgId=1 — supports ?limit=N&offset=N */
 router.get("/modules", requireLocalUser, async (req, res): Promise<void> => {
   const localUser = (req as any).localUser;
   const orgId = parseInt(req.query.orgId as string, 10);
@@ -42,6 +46,9 @@ router.get("/modules", requireLocalUser, async (req, res): Promise<void> => {
   }
 
   if (!(await assertOrgAdmin(localUser, orgId, res))) return;
+
+  const limit = Math.min(parseInt(req.query.limit as string || String(DEFAULT_LIMIT), 10), MAX_LIMIT);
+  const offset = Math.max(parseInt(req.query.offset as string || "0", 10), 0);
 
   const rows = await db
     .select({
@@ -59,7 +66,9 @@ router.get("/modules", requireLocalUser, async (req, res): Promise<void> => {
     })
     .from(modules)
     .where(eq(modules.organizationId, orgId))
-    .orderBy(asc(modules.createdAt));
+    .orderBy(asc(modules.createdAt))
+    .limit(limit)
+    .offset(offset);
 
   res.json(rows);
 });

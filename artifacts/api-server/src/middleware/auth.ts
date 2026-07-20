@@ -10,6 +10,35 @@ export function isPlatformOwner(user: any): boolean {
   return !!(user?.email && PLATFORM_OWNER_EMAILS.includes(user.email.toLowerCase()));
 }
 
+// ── In-memory user cache ────────────────────────────────────────────────────
+// Eliminates a DB round-trip on every authenticated request.
+// TTL: 60 s. Max size: 10,000 entries (auto-evicts oldest).
+
+const userCache = new Map<string, { user: any; expiresAt: number }>();
+const USER_CACHE_TTL = 60_000;
+
+function getCachedUser(clerkUserId: string): any | null {
+  const entry = userCache.get(clerkUserId);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { userCache.delete(clerkUserId); return null; }
+  return entry.user;
+}
+
+function setCachedUser(clerkUserId: string, user: any): void {
+  if (userCache.size >= 10_000) {
+    const firstKey = userCache.keys().next().value;
+    if (firstKey) userCache.delete(firstKey);
+  }
+  userCache.set(clerkUserId, { user, expiresAt: Date.now() + USER_CACHE_TTL });
+}
+
+/** Call this whenever a user record is mutated (role change, deactivation, etc.). */
+export function invalidateUserCache(clerkUserId: string): void {
+  userCache.delete(clerkUserId);
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+
 /**
  * Requires a valid Clerk session. Attaches req.clerkUserId.
  */
@@ -32,6 +61,7 @@ export async function requireAuth(
 
 /**
  * Requires a valid Clerk session AND the user to exist in the local DB.
+ * Results are cached for 60 s per Clerk user ID to avoid per-request DB hits.
  * Matches on users.id (text) = Clerk user ID.
  * Attaches req.localUser.
  */
@@ -48,15 +78,23 @@ export async function requireLocalUser(
     return;
   }
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, clerkUserId))
-    .limit(1);
+  // Check cache first — avoids a DB hit on every request
+  let user = getCachedUser(clerkUserId);
 
   if (!user) {
-    res.status(404).json({ error: "User not found. Call /api/users/sync first." });
-    return;
+    const [dbUser] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, clerkUserId))
+      .limit(1);
+
+    if (!dbUser) {
+      res.status(404).json({ error: "User not found. Call /api/users/sync first." });
+      return;
+    }
+
+    setCachedUser(clerkUserId, dbUser);
+    user = dbUser;
   }
 
   if (!user.isActive) {

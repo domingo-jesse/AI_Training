@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 import { OwnerLayout } from "./OwnerLayout";
@@ -79,6 +79,7 @@ export default function OwnerLogsPage() {
   const [level, setLevel] = useState("all");
   const [category, setCategory] = useState("all");
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(() => {
     const params = new URLSearchParams();
@@ -94,10 +95,32 @@ export default function OwnerLogsPage() {
 
   useEffect(() => { setLoading(true); load(); }, [load]);
 
+  // Visibility-aware auto-refresh — pauses polling when the tab is not visible
   useEffect(() => {
-    if (!autoRefresh) return;
-    const id = setInterval(load, 10000);
-    return () => clearInterval(id);
+    if (!autoRefresh) {
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      return;
+    }
+
+    function startInterval() {
+      intervalRef.current = setInterval(() => {
+        if (document.visibilityState === "visible") load();
+      }, 10_000);
+    }
+
+    function handleVisibility() {
+      if (document.visibilityState === "visible") {
+        load(); // immediate refresh when returning to tab
+      }
+    }
+
+    startInterval();
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [autoRefresh, load]);
 
   return (

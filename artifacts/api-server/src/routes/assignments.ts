@@ -1,16 +1,22 @@
 import { Router, type IRouter } from "express";
 import { db, assignments, modules, users, organizationMemberships } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
-import { requireLocalUser } from "../middleware/auth";
+import { requireLocalUser, isPlatformOwner } from "../middleware/auth";
 
 const router: IRouter = Router();
+
+const MAX_LIMIT = 200;
+const DEFAULT_LIMIT = 100;
 
 /**
  * GET /api/assignments/my
  * Returns the current learner's active assignments with module details.
+ * Supports ?limit=N&offset=N
  */
 router.get("/assignments/my", requireLocalUser, async (req, res): Promise<void> => {
   const localUser = (req as any).localUser;
+  const limit = Math.min(parseInt(req.query.limit as string || String(DEFAULT_LIMIT), 10), MAX_LIMIT);
+  const offset = Math.max(parseInt(req.query.offset as string || "0", 10), 0);
 
   const rows = await db
     .select({
@@ -35,7 +41,9 @@ router.get("/assignments/my", requireLocalUser, async (req, res): Promise<void> 
         eq(assignments.isActive, true),
       )
     )
-    .orderBy(asc(assignments.assignedAt));
+    .orderBy(asc(assignments.assignedAt))
+    .limit(limit)
+    .offset(offset);
 
   res.json(rows);
 });
@@ -43,24 +51,30 @@ router.get("/assignments/my", requireLocalUser, async (req, res): Promise<void> 
 /**
  * GET /api/assignments?orgId=1
  * Admin: list all assignments for org.
+ * Supports ?limit=N&offset=N
  */
 router.get("/assignments", requireLocalUser, async (req, res): Promise<void> => {
   const localUser = (req as any).localUser;
   const orgId = parseInt(req.query.orgId as string, 10);
   if (isNaN(orgId)) { res.status(400).json({ error: "orgId required" }); return; }
 
-  // verify requester is admin
-  const [m] = await db.select({ role: organizationMemberships.role })
-    .from(organizationMemberships)
-    .where(and(
-      eq(organizationMemberships.organizationId, orgId),
-      eq(organizationMemberships.userId, localUser.userId),
-      eq(organizationMemberships.status, "active"),
-    )).limit(1);
+  // Platform owner bypasses membership check
+  if (!isPlatformOwner(localUser)) {
+    const [m] = await db.select({ role: organizationMemberships.role })
+      .from(organizationMemberships)
+      .where(and(
+        eq(organizationMemberships.organizationId, orgId),
+        eq(organizationMemberships.userId, localUser.userId),
+        eq(organizationMemberships.status, "active"),
+      )).limit(1);
 
-  if (!m || !["owner","admin","manager"].includes(m.role)) {
-    res.status(403).json({ error: "Insufficient permissions" }); return;
+    if (!m || !["owner","admin","manager"].includes(m.role)) {
+      res.status(403).json({ error: "Insufficient permissions" }); return;
+    }
   }
+
+  const limit = Math.min(parseInt(req.query.limit as string || String(DEFAULT_LIMIT), 10), MAX_LIMIT);
+  const offset = Math.max(parseInt(req.query.offset as string || "0", 10), 0);
 
   const rows = await db
     .select({
@@ -78,7 +92,9 @@ router.get("/assignments", requireLocalUser, async (req, res): Promise<void> => 
     .innerJoin(modules, eq(modules.moduleId, assignments.moduleId))
     .innerJoin(users, eq(users.userId, assignments.learnerId))
     .where(eq(assignments.organizationId, orgId))
-    .orderBy(asc(assignments.assignedAt));
+    .orderBy(asc(assignments.assignedAt))
+    .limit(limit)
+    .offset(offset);
 
   res.json(rows);
 });
@@ -95,16 +111,18 @@ router.post("/assignments", requireLocalUser, async (req, res): Promise<void> =>
     res.status(400).json({ error: "orgId, moduleId, learnerId required" }); return;
   }
 
-  const [m] = await db.select({ role: organizationMemberships.role })
-    .from(organizationMemberships)
-    .where(and(
-      eq(organizationMemberships.organizationId, orgId),
-      eq(organizationMemberships.userId, localUser.userId),
-      eq(organizationMemberships.status, "active"),
-    )).limit(1);
+  if (!isPlatformOwner(localUser)) {
+    const [m] = await db.select({ role: organizationMemberships.role })
+      .from(organizationMemberships)
+      .where(and(
+        eq(organizationMemberships.organizationId, orgId),
+        eq(organizationMemberships.userId, localUser.userId),
+        eq(organizationMemberships.status, "active"),
+      )).limit(1);
 
-  if (!m || !["owner","admin","manager"].includes(m.role)) {
-    res.status(403).json({ error: "Insufficient permissions" }); return;
+    if (!m || !["owner","admin","manager"].includes(m.role)) {
+      res.status(403).json({ error: "Insufficient permissions" }); return;
+    }
   }
 
   const [created] = await db.insert(assignments).values({
@@ -131,16 +149,18 @@ router.delete("/assignments/:id", requireLocalUser, async (req, res): Promise<vo
   const [a] = await db.select().from(assignments).where(eq(assignments.assignmentId, assignmentId)).limit(1);
   if (!a) { res.status(404).json({ error: "Not found" }); return; }
 
-  const [m] = await db.select({ role: organizationMemberships.role })
-    .from(organizationMemberships)
-    .where(and(
-      eq(organizationMemberships.organizationId, a.organizationId),
-      eq(organizationMemberships.userId, localUser.userId),
-      eq(organizationMemberships.status, "active"),
-    )).limit(1);
+  if (!isPlatformOwner(localUser)) {
+    const [m] = await db.select({ role: organizationMemberships.role })
+      .from(organizationMemberships)
+      .where(and(
+        eq(organizationMemberships.organizationId, a.organizationId),
+        eq(organizationMemberships.userId, localUser.userId),
+        eq(organizationMemberships.status, "active"),
+      )).limit(1);
 
-  if (!m || !["owner","admin","manager"].includes(m.role)) {
-    res.status(403).json({ error: "Insufficient permissions" }); return;
+    if (!m || !["owner","admin","manager"].includes(m.role)) {
+      res.status(403).json({ error: "Insufficient permissions" }); return;
+    }
   }
 
   await db.update(assignments).set({ isActive: false }).where(eq(assignments.assignmentId, assignmentId));

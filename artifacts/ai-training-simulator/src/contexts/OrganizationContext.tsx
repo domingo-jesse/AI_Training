@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 
@@ -72,16 +72,28 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       .finally(() => setIsLoading(false));
   }, [localUser, isImpersonating, impOrgId, impOrgName, impRole]);
 
-  function switchOrg(orgId: number) {
-    const org = allOrgs.find((o) => o.organizationId === orgId);
-    if (org) {
-      setCurrentOrg(org);
-      sessionStorage.setItem("currentOrgId", String(orgId));
-    }
-  }
+  const switchOrg = useCallback((orgId: number) => {
+    setAllOrgs(prev => {
+      const org = prev.find((o) => o.organizationId === orgId);
+      if (org) {
+        setCurrentOrg(org);
+        sessionStorage.setItem("currentOrgId", String(orgId));
+      }
+      return prev;
+    });
+  }, []);
+
+  // Memoize the context value to prevent re-renders on unrelated parent updates
+  const value = useMemo<OrganizationContextValue>(() => ({
+    currentOrg,
+    allOrgs,
+    isLoading: userLoading || isLoading,
+    error,
+    switchOrg,
+  }), [currentOrg, allOrgs, userLoading, isLoading, error, switchOrg]);
 
   return (
-    <OrganizationContext.Provider value={{ currentOrg, allOrgs, isLoading: userLoading || isLoading, error, switchOrg }}>
+    <OrganizationContext.Provider value={value}>
       {children}
     </OrganizationContext.Provider>
   );

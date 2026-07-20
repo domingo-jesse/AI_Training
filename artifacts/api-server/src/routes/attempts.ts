@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, attempts, modules, users, submissionScores, organizationMemberships, moduleQuestions } from "@workspace/db";
-import { eq, and, desc, asc, inArray } from "drizzle-orm";
+import { eq, and, desc, asc, inArray, count, avg, sql } from "drizzle-orm";
 import { requireLocalUser, isPlatformOwner } from "../middleware/auth";
 import { gradeWithLLM } from "../services/llmGraderService";
 
@@ -8,8 +8,14 @@ const router: IRouter = Router();
 
 const ADMIN_ROLES = ["owner", "admin", "manager"];
 
+// Max rows any list endpoint will return
+const MAX_LIMIT = 200;
+const DEFAULT_LIMIT = 100;
+
 async function isOrgAdmin(localUser: any, orgId: number): Promise<boolean> {
   if (isPlatformOwner(localUser)) return true;
+  // Trust role from req.localUser when available — avoids redundant DB hit
+  if (localUser.organizationId === orgId && ADMIN_ROLES.includes(localUser.role)) return true;
   const [m] = await db.select({ role: organizationMemberships.role })
     .from(organizationMemberships)
     .where(and(
@@ -49,10 +55,13 @@ router.post("/attempts", requireLocalUser, async (req, res): Promise<void> => {
 /**
  * GET /api/attempts/my
  * Learner: get their attempts, optionally filtered by moduleId.
+ * Supports ?limit=N&offset=N (max 200, default 100).
  */
 router.get("/attempts/my", requireLocalUser, async (req, res): Promise<void> => {
   const localUser = (req as any).localUser;
   const moduleId = req.query.moduleId ? parseInt(req.query.moduleId as string, 10) : undefined;
+  const limit = Math.min(parseInt(req.query.limit as string || String(DEFAULT_LIMIT), 10), MAX_LIMIT);
+  const offset = Math.max(parseInt(req.query.offset as string || "0", 10), 0);
 
   const where = moduleId
     ? and(eq(attempts.userId, localUser.userId), eq(attempts.moduleId, moduleId))
@@ -76,7 +85,9 @@ router.get("/attempts/my", requireLocalUser, async (req, res): Promise<void> => 
     .from(attempts)
     .innerJoin(modules, eq(modules.moduleId, attempts.moduleId))
     .where(where)
-    .orderBy(desc(attempts.startedAt));
+    .orderBy(desc(attempts.startedAt))
+    .limit(limit)
+    .offset(offset);
 
   res.json(rows);
 });
@@ -84,6 +95,7 @@ router.get("/attempts/my", requireLocalUser, async (req, res): Promise<void> => 
 /**
  * GET /api/attempts
  * Admin: list all attempts for an org, filtered by status.
+ * Supports ?limit=N&offset=N (max 200, default 100).
  */
 router.get("/attempts", requireLocalUser, async (req, res): Promise<void> => {
   const localUser = (req as any).localUser;
@@ -95,6 +107,8 @@ router.get("/attempts", requireLocalUser, async (req, res): Promise<void> => {
   }
 
   const statusFilter = req.query.status as string | undefined;
+  const limit = Math.min(parseInt(req.query.limit as string || String(DEFAULT_LIMIT), 10), MAX_LIMIT);
+  const offset = Math.max(parseInt(req.query.offset as string || "0", 10), 0);
 
   let where = eq(attempts.organizationId, orgId) as any;
   if (statusFilter) {
@@ -121,7 +135,9 @@ router.get("/attempts", requireLocalUser, async (req, res): Promise<void> => {
     .innerJoin(users, eq(users.userId, attempts.userId))
     .innerJoin(modules, eq(modules.moduleId, attempts.moduleId))
     .where(where)
-    .orderBy(desc(attempts.submittedAt));
+    .orderBy(desc(attempts.submittedAt))
+    .limit(limit)
+    .offset(offset);
 
   res.json(rows);
 });
@@ -184,19 +200,17 @@ router.get("/attempts/:id", requireLocalUser, async (req, res): Promise<void> =>
     }
   }
 
-  // Load questions for this module
-  const questions = await db
-    .select()
-    .from(moduleQuestions)
-    .where(eq(moduleQuestions.moduleId, attempt.moduleId))
-    .orderBy(asc(moduleQuestions.questionOrder));
-
-  // Load submission score if graded
-  const [score] = await db
-    .select()
-    .from(submissionScores)
-    .where(eq(submissionScores.attemptId, attemptId))
-    .limit(1);
+  // Load questions and submission score in parallel
+  const [questions, [score]] = await Promise.all([
+    db.select()
+      .from(moduleQuestions)
+      .where(eq(moduleQuestions.moduleId, attempt.moduleId))
+      .orderBy(asc(moduleQuestions.questionOrder)),
+    db.select()
+      .from(submissionScores)
+      .where(eq(submissionScores.attemptId, attemptId))
+      .limit(1),
+  ]);
 
   res.json({ ...attempt, questions, submissionScore: score ?? null });
 });
@@ -256,7 +270,7 @@ router.post("/attempts/:id/submit", requireLocalUser, async (req, res): Promise<
 
 /**
  * POST /api/attempts/:id/grade-ai
- * Admin: request AI-generated grade suggestions (does NOT save — returns preview for admin review).
+ * Admin: request AI-generated grade suggestions (returns preview for admin review — does NOT save).
  */
 router.post("/attempts/:id/grade-ai", requireLocalUser, async (req, res): Promise<void> => {
   const localUser = (req as any).localUser;
@@ -361,25 +375,25 @@ router.post("/attempts/:id/grade", requireLocalUser, async (req, res): Promise<v
     showResultsToLearner, showFeedbackToLearner,
   } = req.body;
 
-  // Update attempt
-  const [updatedAttempt] = await db.update(attempts).set({
-    totalScore: totalScore ?? null,
-    aiFeedback: overallFeedback ?? null,
-    strengths: strengths ?? null,
-    missedPoints: missedPoints ?? null,
-    bestPracticeReasoning: bestPracticeReasoning ?? null,
-    recommendedResponse: recommendedResponse ?? null,
-    takeawaySummary: takeawaySummary ?? null,
-    attemptState: "graded",
-    resultStatus: resultStatus ?? "approved",
-    gradedAt: new Date().toISOString(),
-    gradedByType: "manual",
-    gradedByUserId: localUser.userId,
-  }).where(eq(attempts.attemptId, attemptId)).returning();
-
-  // Upsert submission_scores
-  const [existingScore] = await db.select().from(submissionScores)
-    .where(eq(submissionScores.attemptId, attemptId)).limit(1);
+  // Update attempt and upsert score in parallel-friendly sequence
+  const [updatedAttempt, [existingScore]] = await Promise.all([
+    db.update(attempts).set({
+      totalScore: totalScore ?? null,
+      aiFeedback: overallFeedback ?? null,
+      strengths: strengths ?? null,
+      missedPoints: missedPoints ?? null,
+      bestPracticeReasoning: bestPracticeReasoning ?? null,
+      recommendedResponse: recommendedResponse ?? null,
+      takeawaySummary: takeawaySummary ?? null,
+      attemptState: "graded",
+      resultStatus: resultStatus ?? "approved",
+      gradedAt: new Date().toISOString(),
+      gradedByType: "manual",
+      gradedByUserId: localUser.userId,
+    }).where(eq(attempts.attemptId, attemptId)).returning().then(r => r[0]),
+    db.select().from(submissionScores)
+      .where(eq(submissionScores.attemptId, attemptId)).limit(1),
+  ]);
 
   const scoreValues = {
     attemptId,
@@ -420,7 +434,7 @@ router.post("/attempts/:id/grade", requireLocalUser, async (req, res): Promise<v
 
 /**
  * GET /api/progress/org?orgId=1
- * Admin: org-wide progress summary.
+ * Admin: org-wide progress summary — uses SQL aggregation instead of JS-side filtering.
  */
 router.get("/progress/org", requireLocalUser, async (req, res): Promise<void> => {
   try {
@@ -432,7 +446,23 @@ router.get("/progress/org", requireLocalUser, async (req, res): Promise<void> =>
       res.status(403).json({ error: "Insufficient permissions" }); return;
     }
 
-    const allAttempts = await db
+    const limit = Math.min(parseInt(req.query.limit as string || "100", 10), MAX_LIMIT);
+    const offset = Math.max(parseInt(req.query.offset as string || "0", 10), 0);
+
+    // Aggregate counts and avg score in SQL — no JS-side fan-out
+    const [stats] = await db
+      .select({
+        total: count(),
+        submitted: sql<number>`COUNT(*) FILTER (WHERE ${attempts.attemptState} = 'submitted')`,
+        graded:    sql<number>`COUNT(*) FILTER (WHERE ${attempts.attemptState} = 'graded')`,
+        inProgress: sql<number>`COUNT(*) FILTER (WHERE ${attempts.attemptState} = 'in_progress')`,
+        avgScore:  sql<number>`AVG(${attempts.totalScore}) FILTER (WHERE ${attempts.totalScore} IS NOT NULL)`,
+      })
+      .from(attempts)
+      .where(eq(attempts.organizationId, orgId));
+
+    // Recent attempts — paginated
+    const recentAttempts = await db
       .select({
         attemptId: attempts.attemptId,
         userId: attempts.userId,
@@ -449,18 +479,18 @@ router.get("/progress/org", requireLocalUser, async (req, res): Promise<void> =>
       .innerJoin(users, eq(users.userId, attempts.userId))
       .innerJoin(modules, eq(modules.moduleId, attempts.moduleId))
       .where(eq(attempts.organizationId, orgId))
-      .orderBy(desc(attempts.submittedAt));
+      .orderBy(desc(attempts.submittedAt))
+      .limit(limit)
+      .offset(offset);
 
-    const total = allAttempts.length;
-    const submitted = allAttempts.filter(a => a.attemptState === "submitted").length;
-    const graded = allAttempts.filter(a => a.attemptState === "graded").length;
-    const inProgress = allAttempts.filter(a => a.attemptState === "in_progress").length;
-    const scoredAttempts = allAttempts.filter(a => a.totalScore != null);
-    const avgScore = scoredAttempts.length > 0
-      ? scoredAttempts.reduce((s, a) => s + (a.totalScore ?? 0), 0) / scoredAttempts.length
-      : null;
-
-    res.json({ total, submitted, graded, inProgress, avgScore, attempts: allAttempts });
+    res.json({
+      total: Number(stats?.total ?? 0),
+      submitted: Number(stats?.submitted ?? 0),
+      graded: Number(stats?.graded ?? 0),
+      inProgress: Number(stats?.inProgress ?? 0),
+      avgScore: stats?.avgScore ?? null,
+      attempts: recentAttempts,
+    });
   } catch (err) {
     console.error("GET /progress/org error:", err);
     res.status(500).json({ error: "Failed to load progress data" });

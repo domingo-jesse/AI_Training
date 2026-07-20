@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { ClerkProvider, SignIn, SignUp, Show, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
@@ -7,34 +7,40 @@ import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/reac
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
+// Auth/landing pages — eagerly loaded (tiny, on the critical path)
 import LandingPage from "@/pages/LandingPage";
 import SignInPage from "@/pages/auth/SignInPage";
 import AdminSignInPage from "@/pages/auth/AdminSignInPage";
 import SignUpPage from "@/pages/auth/SignUpPage";
-import DashboardPage from "@/pages/DashboardPage";
-import AssignmentsPage from "@/pages/admin/AssignmentsPage";
-import GradingPage from "@/pages/admin/GradingPage";
-import ProgressPage from "@/pages/admin/ProgressPage";
-import AccountsPage from "@/pages/admin/AccountsPage";
-import ModuleBuilderPage from "@/pages/admin/ModuleBuilderPage";
-import ModulesPage from "@/pages/admin/ModulesPage";
-import AssignModulesPage from "@/pages/admin/AssignModulesPage";
-import GroupsPage from "@/pages/admin/GroupsPage";
-import ProfilePage from "@/pages/admin/ProfilePage";
-import SettingsPage from "@/pages/admin/SettingsPage";
-import DbTablesPage from "@/pages/admin/DbTablesPage";
-import DebugLogsPage from "@/pages/admin/DebugLogsPage";
-import QaCenterPage from "@/pages/admin/QaCenterPage";
 
-import OwnerDashboardPage from "@/pages/owner/OwnerDashboardPage";
-import OwnerOrgsPage from "@/pages/owner/OwnerOrgsPage";
-import OwnerLogsPage from "@/pages/owner/OwnerLogsPage";
-import LearnerHomePage from "@/pages/learner/LearnerHomePage";
-import LearnerModulesPage from "@/pages/learner/LearnerModulesPage";
-import LearnerWorkspacePage from "@/pages/learner/LearnerWorkspacePage";
-import LearnerProgressPage from "@/pages/learner/LearnerProgressPage";
-import LearnerProfilePage from "@/pages/learner/LearnerProfilePage";
-import LearnerSettingsPage from "@/pages/learner/LearnerSettingsPage";
+// Admin pages — lazy loaded
+const DashboardPage        = lazy(() => import("@/pages/DashboardPage"));
+const AssignmentsPage      = lazy(() => import("@/pages/admin/AssignmentsPage"));
+const GradingPage          = lazy(() => import("@/pages/admin/GradingPage"));
+const ProgressPage         = lazy(() => import("@/pages/admin/ProgressPage"));
+const AccountsPage         = lazy(() => import("@/pages/admin/AccountsPage"));
+const ModuleBuilderPage    = lazy(() => import("@/pages/admin/ModuleBuilderPage"));
+const ModulesPage          = lazy(() => import("@/pages/admin/ModulesPage"));
+const AssignModulesPage    = lazy(() => import("@/pages/admin/AssignModulesPage"));
+const GroupsPage           = lazy(() => import("@/pages/admin/GroupsPage"));
+const ProfilePage          = lazy(() => import("@/pages/admin/ProfilePage"));
+const SettingsPage         = lazy(() => import("@/pages/admin/SettingsPage"));
+const DbTablesPage         = lazy(() => import("@/pages/admin/DbTablesPage"));
+const DebugLogsPage        = lazy(() => import("@/pages/admin/DebugLogsPage"));
+const QaCenterPage         = lazy(() => import("@/pages/admin/QaCenterPage"));
+
+// Owner pages — lazy loaded
+const OwnerDashboardPage   = lazy(() => import("@/pages/owner/OwnerDashboardPage"));
+const OwnerOrgsPage        = lazy(() => import("@/pages/owner/OwnerOrgsPage"));
+const OwnerLogsPage        = lazy(() => import("@/pages/owner/OwnerLogsPage"));
+
+// Learner pages — lazy loaded
+const LearnerHomePage      = lazy(() => import("@/pages/learner/LearnerHomePage"));
+const LearnerModulesPage   = lazy(() => import("@/pages/learner/LearnerModulesPage"));
+const LearnerWorkspacePage = lazy(() => import("@/pages/learner/LearnerWorkspacePage"));
+const LearnerProgressPage  = lazy(() => import("@/pages/learner/LearnerProgressPage"));
+const LearnerProfilePage   = lazy(() => import("@/pages/learner/LearnerProfilePage"));
+const LearnerSettingsPage  = lazy(() => import("@/pages/learner/LearnerSettingsPage"));
 
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { OrganizationProvider } from "@/contexts/OrganizationContext";
@@ -171,6 +177,15 @@ function HomeRedirect() {
   );
 }
 
+// Full-screen spinner shown while a lazy chunk is loading
+function PageFallback() {
+  return (
+    <div className="flex h-[100dvh] items-center justify-center bg-background">
+      <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+    </div>
+  );
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
@@ -188,38 +203,40 @@ function ClerkProviderWithRoutes() {
         <ClerkQueryClientCacheInvalidator />
         <ImpersonationProvider>
         <OrganizationProvider>
-        <Switch>
-          <Route path="/" component={HomeRedirect} />
-          <Route path="/sign-in/*?" component={SignInPage} />
-          <Route path="/admin/sign-in/*?" component={AdminSignInPage} />
-          <Route path="/sign-up/*?" component={SignUpPage} />
-          
-          <Route path="/dashboard" component={DashboardPage} />
-          <Route path="/admin/assignments" component={AssignmentsPage} />
-          <Route path="/admin/grading" component={GradingPage} />
-          <Route path="/admin/progress" component={ProgressPage} />
-          <Route path="/admin/accounts" component={AccountsPage} />
-          <Route path="/admin/module-builder" component={ModuleBuilderPage} />
-          <Route path="/admin/modules" component={ModulesPage} />
-          <Route path="/admin/assign-modules" component={AssignModulesPage} />
-          <Route path="/admin/groups" component={GroupsPage} />
-          <Route path="/admin/profile" component={ProfilePage} />
-          <Route path="/admin/settings" component={SettingsPage} />
-          <Route path="/admin/db-tables" component={DbTablesPage} />
-          <Route path="/admin/debug-logs" component={DebugLogsPage} />
-          <Route path="/admin/qa-center" component={QaCenterPage} />
-          
-          <Route path="/owner" component={OwnerDashboardPage} />
-          <Route path="/owner/orgs" component={OwnerOrgsPage} />
-          <Route path="/owner/logs" component={OwnerLogsPage} />
+        <Suspense fallback={<PageFallback />}>
+          <Switch>
+            <Route path="/" component={HomeRedirect} />
+            <Route path="/sign-in/*?" component={SignInPage} />
+            <Route path="/admin/sign-in/*?" component={AdminSignInPage} />
+            <Route path="/sign-up/*?" component={SignUpPage} />
 
-          <Route path="/learner/home" component={LearnerHomePage} />
-          <Route path="/learner/modules" component={LearnerModulesPage} />
-          <Route path="/learner/workspace" component={LearnerWorkspacePage} />
-          <Route path="/learner/progress" component={LearnerProgressPage} />
-          <Route path="/learner/profile" component={LearnerProfilePage} />
-          <Route path="/learner/settings" component={LearnerSettingsPage} />
-        </Switch>
+            <Route path="/dashboard" component={DashboardPage} />
+            <Route path="/admin/assignments" component={AssignmentsPage} />
+            <Route path="/admin/grading" component={GradingPage} />
+            <Route path="/admin/progress" component={ProgressPage} />
+            <Route path="/admin/accounts" component={AccountsPage} />
+            <Route path="/admin/module-builder" component={ModuleBuilderPage} />
+            <Route path="/admin/modules" component={ModulesPage} />
+            <Route path="/admin/assign-modules" component={AssignModulesPage} />
+            <Route path="/admin/groups" component={GroupsPage} />
+            <Route path="/admin/profile" component={ProfilePage} />
+            <Route path="/admin/settings" component={SettingsPage} />
+            <Route path="/admin/db-tables" component={DbTablesPage} />
+            <Route path="/admin/debug-logs" component={DebugLogsPage} />
+            <Route path="/admin/qa-center" component={QaCenterPage} />
+
+            <Route path="/owner" component={OwnerDashboardPage} />
+            <Route path="/owner/orgs" component={OwnerOrgsPage} />
+            <Route path="/owner/logs" component={OwnerLogsPage} />
+
+            <Route path="/learner/home" component={LearnerHomePage} />
+            <Route path="/learner/modules" component={LearnerModulesPage} />
+            <Route path="/learner/workspace" component={LearnerWorkspacePage} />
+            <Route path="/learner/progress" component={LearnerProgressPage} />
+            <Route path="/learner/profile" component={LearnerProfilePage} />
+            <Route path="/learner/settings" component={LearnerSettingsPage} />
+          </Switch>
+        </Suspense>
         </OrganizationProvider>
         </ImpersonationProvider>
       </QueryClientProvider>

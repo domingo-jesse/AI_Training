@@ -1,5 +1,5 @@
 import {
-  createContext, useContext, useEffect, useRef, useState, type ReactNode,
+  createContext, useContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode,
 } from "react";
 import { useLocation } from "wouter";
 
@@ -56,6 +56,8 @@ export function ImpersonationProvider({ children }: { children: ReactNode }) {
 
     if (!originalFetch.current) originalFetch.current = window.fetch;
     const orig = originalFetch.current;
+    const orgId = state.orgId;
+    const role = state.role;
 
     window.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
       const url = typeof input === "string" ? input
@@ -65,8 +67,8 @@ export function ImpersonationProvider({ children }: { children: ReactNode }) {
       // Only inject on API calls — skip the owner routes themselves
       if (url.includes("/api/") && !url.includes("/api/owner/")) {
         const headers = new Headers((init as RequestInit)?.headers);
-        headers.set("x-owner-org", String(state.orgId));
-        headers.set("x-owner-role", state.role!);
+        headers.set("x-owner-org", String(orgId));
+        headers.set("x-owner-role", role);
         return orig.call(this, input, { ...init, headers });
       }
       return orig.call(this, input, init);
@@ -80,32 +82,42 @@ export function ImpersonationProvider({ children }: { children: ReactNode }) {
     };
   }, [state.isImpersonating, state.orgId, state.role]);
 
-  function startImpersonation(orgId: number, orgName: string, role: "admin" | "learner") {
+  const startImpersonation = useCallback((orgId: number, orgName: string, role: "admin" | "learner") => {
     const next: ImpersonationState = { isImpersonating: true, orgId, orgName, role };
     saveState(next);
     setState(next);
     // Navigate to the right portal
     if (role === "admin") setLocation("/dashboard");
     else setLocation("/learner/home");
-  }
+  }, [setLocation]);
 
-  function stopImpersonation() {
+  const stopImpersonation = useCallback(() => {
     const next: ImpersonationState = { isImpersonating: false, orgId: null, orgName: "", role: null };
     saveState(next);
     setState(next);
     setLocation("/owner/orgs");
-  }
+  }, [setLocation]);
 
-  function switchRole(role: "admin" | "learner") {
-    const next = { ...state, role };
-    saveState(next);
-    setState(next);
+  const switchRole = useCallback((role: "admin" | "learner") => {
+    setState(prev => {
+      const next = { ...prev, role };
+      saveState(next);
+      return next;
+    });
     if (role === "admin") setLocation("/dashboard");
     else setLocation("/learner/home");
-  }
+  }, [setLocation]);
+
+  // Memoize context value — prevents all consumers re-rendering on unrelated parent updates
+  const value = useMemo<ImpersonationContextValue>(() => ({
+    ...state,
+    startImpersonation,
+    stopImpersonation,
+    switchRole,
+  }), [state, startImpersonation, stopImpersonation, switchRole]);
 
   return (
-    <ImpersonationContext.Provider value={{ ...state, startImpersonation, stopImpersonation, switchRole }}>
+    <ImpersonationContext.Provider value={value}>
       {children}
     </ImpersonationContext.Provider>
   );

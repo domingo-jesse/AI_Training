@@ -6,6 +6,8 @@ import { requireLocalUser, isPlatformOwner } from "../middleware/auth";
 const router: IRouter = Router();
 
 const ADMIN_ROLES = ["owner", "admin", "manager"];
+const MAX_LIMIT = 500;
+const DEFAULT_LIMIT = 100;
 
 /**
  * GET /api/organizations
@@ -38,6 +40,7 @@ router.get("/organizations", requireLocalUser, async (req, res): Promise<void> =
 /**
  * GET /api/organizations/:orgId/members
  * Returns all members of an organization. Requires admin/owner/manager role.
+ * Supports ?limit=N&offset=N
  */
 router.get("/organizations/:orgId/members", requireLocalUser, async (req, res): Promise<void> => {
   const localUser = (req as any).localUser;
@@ -73,7 +76,10 @@ router.get("/organizations/:orgId/members", requireLocalUser, async (req, res): 
     }
   }
 
-  // Fetch all members — filter out platform owner emails so they stay hidden
+  const limit = Math.min(parseInt(req.query.limit as string || String(DEFAULT_LIMIT), 10), MAX_LIMIT);
+  const offset = Math.max(parseInt(req.query.offset as string || "0", 10), 0);
+
+  // Fetch members — filter out platform owner emails so they stay hidden
   const ownerEmails = (process.env.PLATFORM_OWNER_EMAILS ?? "domingo.jesse@gmail.com")
     .split(",").map(e => e.trim().toLowerCase());
 
@@ -91,7 +97,9 @@ router.get("/organizations/:orgId/members", requireLocalUser, async (req, res): 
     .from(organizationMemberships)
     .innerJoin(usersTable, eq(usersTable.userId, organizationMemberships.userId))
     .where(eq(organizationMemberships.organizationId, orgId))
-    .orderBy(organizationMemberships.createdAt);
+    .orderBy(organizationMemberships.createdAt)
+    .limit(limit)
+    .offset(offset);
 
   res.json(members.filter(m => !ownerEmails.includes(m.email?.toLowerCase() ?? "")));
 });
