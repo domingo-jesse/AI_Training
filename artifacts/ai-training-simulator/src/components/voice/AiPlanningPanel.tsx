@@ -275,7 +275,7 @@ function ConversationMode({ onGenerated }: { onGenerated: (m: GeneratedModule) =
   }, [onGenerated]);
 
   useEffect(() => { chat([]); }, []); // eslint-disable-line
-  useEffect(scrollToBottom, [messages]);
+  useEffect(() => { scrollToBottom(); }, [messages]); // eslint-disable-line
 
   const send = useCallback(async (text: string) => {
     const trimmed = text.trim();
