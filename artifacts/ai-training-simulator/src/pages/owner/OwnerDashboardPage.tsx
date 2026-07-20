@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 import { OwnerLayout } from "./OwnerLayout";
 import { Building2, Users, BookOpen, ClipboardCheck, AlertCircle, TrendingUp, Clock, CheckCircle } from "lucide-react";
 
@@ -44,11 +46,11 @@ export default function OwnerDashboardPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/ai-training-simulator/api/owner/stats", { credentials: "include" }).then(r => r.json()),
-      fetch("/ai-training-simulator/api/owner/activity", { credentials: "include" }).then(r => r.json()),
+      fetch(`${basePath}/api/owner/stats`, { credentials: "include" }).then(r => r.ok ? r.json() : null),
+      fetch(`${basePath}/api/owner/activity`, { credentials: "include" }).then(r => r.ok ? r.json() : null),
     ]).then(([s, a]) => {
-      setStats(s);
-      setActivity(a);
+      if (s) setStats(s);
+      if (a) setActivity(a);
     }).finally(() => setLoading(false));
   }, []);
 

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 import { OwnerLayout } from "./OwnerLayout";
 import { Building2, Plus, Users, BookOpen, ClipboardCheck, Trash2, Pencil, X, Check, ChevronRight, RefreshCw } from "lucide-react";
 
@@ -28,7 +30,7 @@ function CreateOrgModal({ onClose, onCreated }: { onClose: () => void; onCreated
     setLoading(true);
     setError("");
     try {
-      const r = await fetch("/ai-training-simulator/api/owner/orgs", {
+      const r = await fetch(`${basePath}/api/owner/orgs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -100,8 +102,8 @@ function OrgDetailPanel({ orgId, onClose }: { orgId: number; onClose: () => void
   const [detail, setDetail] = useState<OrgDetail | null>(null);
 
   useEffect(() => {
-    fetch(`/ai-training-simulator/api/owner/orgs/${orgId}`, { credentials: "include" })
-      .then(r => r.json()).then(setDetail);
+    fetch(`${basePath}/api/owner/orgs/${orgId}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : null).then(d => d && setDetail(d));
   }, [orgId]);
 
   return (
@@ -184,9 +186,9 @@ export default function OwnerOrgsPage() {
 
   const load = () => {
     setLoading(true);
-    fetch("/ai-training-simulator/api/owner/orgs", { credentials: "include" })
-      .then(r => r.json())
-      .then(setOrgs)
+    fetch(`${basePath}/api/owner/orgs`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : Promise.resolve([]))
+      .then(data => setOrgs(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   };
 
@@ -194,7 +196,7 @@ export default function OwnerOrgsPage() {
 
   const saveEdit = async (orgId: number) => {
     if (!editName.trim()) return;
-    await fetch(`/ai-training-simulator/api/owner/orgs/${orgId}`, {
+    await fetch(`${basePath}/api/owner/orgs/${orgId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -206,7 +208,7 @@ export default function OwnerOrgsPage() {
 
   const deleteOrg = async (orgId: number) => {
     if (!window.confirm("Delete this organization? This cannot be undone.")) return;
-    await fetch(`/ai-training-simulator/api/owner/orgs/${orgId}`, {
+    await fetch(`${basePath}/api/owner/orgs/${orgId}`, {
       method: "DELETE", credentials: "include",
     });
     setDeletingId(null);

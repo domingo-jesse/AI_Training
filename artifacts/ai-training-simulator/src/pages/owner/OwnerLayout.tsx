@@ -1,5 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useUser } from "@clerk/react";
+
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 import {
   LayoutDashboard, Building2, ScrollText, ChevronRight,
   Shield, LogOut, AlertTriangle
@@ -19,7 +21,7 @@ export function OwnerLayout({ children }: { children: React.ReactNode }) {
   const [allowed, setAllowed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    fetch("/ai-training-simulator/api/owner/check", { credentials: "include" })
+    fetch(`${basePath}/api/owner/check`, { credentials: "include" })
       .then(r => setAllowed(r.ok))
       .catch(() => setAllowed(false));
   }, []);

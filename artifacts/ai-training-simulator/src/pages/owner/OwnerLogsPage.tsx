@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
+
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 import { OwnerLayout } from "./OwnerLayout";
 import { RefreshCw, AlertCircle, Info, AlertTriangle, Filter, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -84,9 +86,9 @@ export default function OwnerLogsPage() {
     if (category !== "all") params.set("category", category);
     params.set("limit", "200");
 
-    fetch(`/ai-training-simulator/api/owner/logs?${params}`, { credentials: "include" })
-      .then(r => r.json())
-      .then(setLogs)
+    fetch(`${basePath}/api/owner/logs?${params}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : Promise.resolve([]))
+      .then(data => setLogs(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   }, [level, category]);
 
