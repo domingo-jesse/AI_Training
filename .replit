@@ -21,3 +21,13 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.development]
+APP_ENV = "development"
+LOG_LEVEL = "debug"
+
+[userenv.production]
+APP_ENV = "production"
+LOG_LEVEL = "warn"
