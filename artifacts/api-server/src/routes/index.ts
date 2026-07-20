@@ -9,6 +9,7 @@ import adminUsersRouter from "./adminUsers";
 import groupsRouter from "./groups";
 import settingsRouter from "./settings";
 import ownerRouter from "./owner";
+import deepgramRouter from "./deepgram";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(adminUsersRouter);
 router.use(groupsRouter);
 router.use(settingsRouter);
 router.use(ownerRouter);
+router.use(deepgramRouter);
 
 export default router;

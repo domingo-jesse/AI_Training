@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { LearnerLayout } from "@/components/layout/LearnerLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,9 +7,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useVoice } from "@/hooks/useVoice";
+import { VoiceToolbar } from "@/components/voice/VoiceToolbar";
 import {
   ChevronRight, ChevronLeft, Send, CheckCircle2, BookOpen,
-  Clock, AlertCircle, Target, Lightbulb, FileText
+  Clock, AlertCircle, Target, Lightbulb, FileText, Mic,
 } from "lucide-react";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -67,37 +69,83 @@ function useModule(moduleId: number | null) {
 export default function LearnerWorkspacePage() {
   const [, setLocation] = useLocation();
   const { localUser } = useCurrentUser();
-  const params = new URLSearchParams(window.location.search);
+  const params   = new URLSearchParams(window.location.search);
   const moduleId = params.get("moduleId") ? parseInt(params.get("moduleId")!) : null;
-  const orgId = localUser?.organizationId ?? null;
+  const orgId    = localUser?.organizationId ?? null;
 
   const { mod, loading, error } = useModule(moduleId);
 
-  const [phase, setPhase] = useState<Phase>("intro");
-  const [currentQ, setCurrentQ] = useState(0);
-  const [responses, setResponses] = useState<ResponseEntry[]>([]);
-  const [attemptId, setAttemptId] = useState<number | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [phase,       setPhase]       = useState<Phase>("intro");
+  const [currentQ,    setCurrentQ]    = useState(0);
+  const [responses,   setResponses]   = useState<ResponseEntry[]>([]);
+  const [attemptId,   setAttemptId]   = useState<number | null>(null);
+  const [submitting,  setSubmitting]  = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const questions = mod?.questions ?? [];
+  // ── Voice ──────────────────────────────────────────────────────────────────
+  const voice = useVoice();
+
+  const questions      = mod?.questions ?? [];
   const totalQuestions = questions.length;
-  const progress = phase === "intro" ? 0 : phase === "submitted" ? 100
-    : Math.round(((currentQ) / totalQuestions) * 100);
+  const progress       = phase === "intro" ? 0 : phase === "submitted" ? 100
+    : Math.round((currentQ / totalQuestions) * 100);
 
   const currentQuestion = questions[currentQ];
   const currentResponse = responses.find(r => r.questionId === currentQuestion?.questionId)?.response ?? "";
+
+  // Build the text the AI persona "says" for a given question
+  const buildSpeakText = useCallback((q: Question | undefined): string => {
+    if (!q) return "";
+    if (q.questionType === "ai_conversation" && q.aiRoleOrPersona) {
+      return `${q.aiRoleOrPersona}. ${q.questionText}`;
+    }
+    return q.questionText;
+  }, []);
+
+  // Auto-speak new question when we advance (only for ai_conversation type)
+  const prevQIndexRef = useRef<number>(-1);
+  useEffect(() => {
+    if (phase !== "questions" || !currentQuestion) return;
+    if (prevQIndexRef.current === currentQ) return;
+    prevQIndexRef.current = currentQ;
+
+    if (currentQuestion.questionType === "ai_conversation") {
+      voice.speak(buildSpeakText(currentQuestion));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentQ, phase]);
+
+  // Stop any speech when leaving questions phase
+  useEffect(() => {
+    if (phase !== "questions") voice.cancelSpeak();
+  }, [phase]); // eslint-disable-line
 
   const setResponse = (text: string) => {
     if (!currentQuestion) return;
     setResponses(prev => {
       const existing = prev.findIndex(r => r.questionId === currentQuestion.questionId);
-      const entry: ResponseEntry = { questionId: currentQuestion.questionId, questionText: currentQuestion.questionText, response: text };
+      const entry: ResponseEntry = {
+        questionId:   currentQuestion.questionId,
+        questionText: currentQuestion.questionText,
+        response:     text,
+      };
       if (existing >= 0) return prev.map((r, i) => i === existing ? entry : r);
       return [...prev, entry];
     });
   };
+
+  // Append STT transcript to whatever is already typed
+  const handleStopRecording = useCallback(async () => {
+    const transcript = await voice.stopRecording();
+    if (transcript) {
+      setResponse(currentResponse ? `${currentResponse} ${transcript}` : transcript);
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voice, currentResponse]);
+
+  // ── Attempt lifecycle ──────────────────────────────────────────────────────
 
   const startAttempt = async () => {
     if (!moduleId || !orgId) { setSubmitError("Missing module or organization context."); return; }
@@ -115,6 +163,7 @@ export default function LearnerWorkspacePage() {
       setAttemptId(a.attemptId);
       setPhase("questions");
       setCurrentQ(0);
+      prevQIndexRef.current = -1; // reset so auto-speak fires
     } catch (e: any) {
       setSubmitError(e.message);
     } finally {
@@ -123,7 +172,9 @@ export default function LearnerWorkspacePage() {
   };
 
   const goNext = async () => {
-    // auto-save
+    // stop any voice activity before navigating
+    voice.cancelSpeak();
+
     if (attemptId) {
       fetch(`${base}/api/attempts/${attemptId}`, {
         method: "PUT",
@@ -132,7 +183,6 @@ export default function LearnerWorkspacePage() {
         body: JSON.stringify({ questionResponses: responses }),
       }).catch(() => {});
     }
-
     if (currentQ < totalQuestions - 1) {
       setCurrentQ(q => q + 1);
       setTimeout(() => textareaRef.current?.focus(), 100);
@@ -160,6 +210,8 @@ export default function LearnerWorkspacePage() {
       setSubmitting(false);
     }
   };
+
+  // ── Guard screens ──────────────────────────────────────────────────────────
 
   if (!moduleId) {
     return (
@@ -197,6 +249,7 @@ export default function LearnerWorkspacePage() {
   }
 
   // ── Submitted ──────────────────────────────────────────────────────────────
+
   if (phase === "submitted") {
     return (
       <LearnerLayout>
@@ -205,12 +258,8 @@ export default function LearnerWorkspacePage() {
             <CheckCircle2 className="w-10 h-10 text-emerald-400" />
           </div>
           <h1 className="text-3xl font-display font-bold mb-3">Simulation Submitted!</h1>
-          <p className="text-muted-foreground text-lg mb-2">
-            Your responses have been submitted for review.
-          </p>
-          <p className="text-muted-foreground mb-8">
-            Your admin will grade your submission and release feedback shortly.
-          </p>
+          <p className="text-muted-foreground text-lg mb-2">Your responses have been submitted for review.</p>
+          <p className="text-muted-foreground mb-8">Your admin will grade your submission and release feedback shortly.</p>
           {mod.lessonTakeaway && (
             <Card className="mb-8 text-left border-primary/20 bg-primary/5">
               <CardContent className="flex gap-3 p-5">
@@ -232,7 +281,9 @@ export default function LearnerWorkspacePage() {
   }
 
   // ── Intro ──────────────────────────────────────────────────────────────────
+
   if (phase === "intro") {
+    const hasVoiceQuestions = questions.some(q => q.questionType === "ai_conversation");
     return (
       <LearnerLayout>
         <div className="max-w-3xl mx-auto">
@@ -248,6 +299,11 @@ export default function LearnerWorkspacePage() {
                   </span>
                 )}
                 <Badge variant="outline">{totalQuestions} question{totalQuestions !== 1 ? "s" : ""}</Badge>
+                {hasVoiceQuestions && (
+                  <Badge variant="outline" className="text-primary border-primary/40 bg-primary/5 gap-1">
+                    <Mic className="w-3 h-3" /> Voice-enabled
+                  </Badge>
+                )}
               </div>
             </div>
           </div>
@@ -287,6 +343,7 @@ export default function LearnerWorkspacePage() {
               <ul className="text-sm text-muted-foreground space-y-1">
                 <li>• Read the scenario carefully</li>
                 <li>• Answer {totalQuestions} question{totalQuestions !== 1 ? "s" : ""} based on your analysis</li>
+                {hasVoiceQuestions && <li>• You can speak your responses — mic button appears on each question</li>}
                 <li>• Your responses will be reviewed and graded</li>
               </ul>
             </CardContent>
@@ -317,17 +374,16 @@ export default function LearnerWorkspacePage() {
     );
   }
 
-  // ── Questions ──────────────────────────────────────────────────────────────
+  // ── Questions (no questions guard) ─────────────────────────────────────────
 
-  // Guard: entered questions phase but module has no questions
-  if (phase === "questions" && questions.length === 0) {
+  if (questions.length === 0) {
     return (
       <LearnerLayout>
         <Card className="flex flex-col items-center p-16 text-center max-w-lg mx-auto">
           <AlertCircle className="w-10 h-10 text-amber-400 mb-4" />
           <h2 className="text-lg font-semibold mb-2">No questions available</h2>
           <p className="text-muted-foreground text-sm mb-6">
-            This module doesn't have any questions yet. Your admin needs to add questions before you can complete it.
+            This module doesn't have any questions yet.
           </p>
           <Button variant="outline" onClick={() => setLocation("/learner/modules")}>Back to My Modules</Button>
         </Card>
@@ -335,10 +391,14 @@ export default function LearnerWorkspacePage() {
     );
   }
 
+  // ── Questions ──────────────────────────────────────────────────────────────
+
+  const isAiConversation = currentQuestion?.questionType === "ai_conversation";
+
   return (
     <LearnerLayout>
       <div className="max-w-3xl mx-auto">
-        {/* Header progress */}
+        {/* Progress header */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
             <p className="text-sm text-muted-foreground font-medium">{mod.title}</p>
@@ -349,6 +409,17 @@ export default function LearnerWorkspacePage() {
           <Progress value={progress} className="h-2" />
         </div>
 
+        {/* AI persona label (for conversation questions) */}
+        {isAiConversation && currentQuestion.aiRoleOrPersona && (
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-7 h-7 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0">
+              <span className="text-xs font-bold text-violet-400">AI</span>
+            </div>
+            <p className="text-xs text-violet-400 font-medium">{currentQuestion.aiRoleOrPersona}</p>
+          </div>
+        )}
+
+        {/* Question card */}
         <Card className="mb-4">
           <CardContent className="p-6">
             <div className="flex items-start gap-3 mb-5">
@@ -362,11 +433,28 @@ export default function LearnerWorkspacePage() {
               ref={textareaRef}
               value={currentResponse}
               onChange={e => setResponse(e.target.value)}
-              placeholder="Type your response here…"
+              placeholder={
+                isAiConversation
+                  ? "Type or speak your response…"
+                  : "Type your response here…"
+              }
               rows={8}
-              className="resize-none text-sm"
+              className="resize-none text-sm mb-4"
               autoFocus
             />
+
+            {/* Voice toolbar */}
+            <div className="border-t border-border/50 pt-4">
+              <VoiceToolbar
+                status={voice.status}
+                error={voice.error}
+                onStartRecording={voice.startRecording}
+                onStopRecording={handleStopRecording}
+                onSpeak={() => voice.speak(buildSpeakText(currentQuestion))}
+                onCancelSpeak={voice.cancelSpeak}
+                canSpeak={!!currentQuestion}
+              />
+            </div>
 
             <div className="flex items-center justify-between mt-3">
               <p className="text-xs text-muted-foreground">
@@ -388,14 +476,14 @@ export default function LearnerWorkspacePage() {
 
         <div className="flex gap-3">
           {currentQ > 0 && (
-            <Button variant="outline" onClick={() => setCurrentQ(q => q - 1)}>
+            <Button variant="outline" onClick={() => { voice.cancelSpeak(); setCurrentQ(q => q - 1); }}>
               <ChevronLeft className="w-4 h-4 mr-1" /> Back
             </Button>
           )}
           <Button
             className="flex-1"
             onClick={goNext}
-            disabled={submitting || !currentResponse.trim()}
+            disabled={submitting || !currentResponse.trim() || voice.isRecording || voice.status === "transcribing"}
           >
             {submitting ? (
               <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2" />
