@@ -125,6 +125,24 @@ router.post("/assignments", requireLocalUser, async (req, res): Promise<void> =>
     }
   }
 
+  // Prevent duplicate active assignments — two admins clicking at the same time
+  // would otherwise both succeed and leave the learner with duplicate entries.
+  const [duplicate] = await db
+    .select({ assignmentId: assignments.assignmentId })
+    .from(assignments)
+    .where(and(
+      eq(assignments.organizationId, orgId),
+      eq(assignments.moduleId, moduleId),
+      eq(assignments.learnerId, learnerId),
+      eq(assignments.isActive, true),
+    ))
+    .limit(1);
+
+  if (duplicate) {
+    res.status(409).json({ error: "This module is already actively assigned to this learner" });
+    return;
+  }
+
   const [created] = await db.insert(assignments).values({
     organizationId: orgId,
     moduleId,

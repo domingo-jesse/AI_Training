@@ -243,28 +243,37 @@ router.post("/modules/:id/questions", requireLocalUser, async (req, res): Promis
 
   if (!questionText) { res.status(400).json({ error: "questionText required" }); return; }
 
-  // auto-assign order
-  const existing = await db.select({ questionOrder: moduleQuestions.questionOrder })
-    .from(moduleQuestions).where(eq(moduleQuestions.moduleId, moduleId));
-  const nextOrder = existing.length > 0 ? Math.max(...existing.map(q => q.questionOrder)) + 1 : 1;
+  // Wrap MAX(order) + INSERT in a transaction with a row-lock so concurrent
+  // additions to the same module can't race and produce duplicate order values.
+  const [created] = await db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ questionOrder: moduleQuestions.questionOrder })
+      .from(moduleQuestions)
+      .where(eq(moduleQuestions.moduleId, moduleId))
+      .for("update");            // holds a row-level lock for the duration of this tx
 
-  const [created] = await db
-    .insert(moduleQuestions)
-    .values({
-      moduleId,
-      questionOrder: nextOrder,
-      questionText,
-      expectedAnswer: expectedAnswer ?? null,
-      maxPoints: maxPoints ?? 10,
-      questionType: questionType ?? "open_text",
-      rubric: rubric ?? null,
-      aiConversationPrompt: aiConversationPrompt ?? null,
-      aiRoleOrPersona: aiRoleOrPersona ?? null,
-      evaluationFocus: evaluationFocus ?? null,
-      maxLearnerResponses: maxLearnerResponses ?? 3,
-      optionalWrapUpInstruction: optionalWrapUpInstruction ?? null,
-    })
-    .returning();
+    const nextOrder = existing.length > 0
+      ? Math.max(...existing.map(q => q.questionOrder)) + 1
+      : 1;
+
+    return tx
+      .insert(moduleQuestions)
+      .values({
+        moduleId,
+        questionOrder: nextOrder,
+        questionText,
+        expectedAnswer: expectedAnswer ?? null,
+        maxPoints: maxPoints ?? 10,
+        questionType: questionType ?? "open_text",
+        rubric: rubric ?? null,
+        aiConversationPrompt: aiConversationPrompt ?? null,
+        aiRoleOrPersona: aiRoleOrPersona ?? null,
+        evaluationFocus: evaluationFocus ?? null,
+        maxLearnerResponses: maxLearnerResponses ?? 3,
+        optionalWrapUpInstruction: optionalWrapUpInstruction ?? null,
+      })
+      .returning();
+  });
 
   res.status(201).json(created);
 });

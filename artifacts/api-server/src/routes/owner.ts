@@ -1,9 +1,9 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { organizations, users, modules, attempts, organizationMemberships } from "@workspace/db";
-import { eq, sql, desc, count, and } from "drizzle-orm";
+import { eq, sql, desc, count } from "drizzle-orm";
 import { requireLocalUser } from "../middleware/auth";
-import { clerkClient } from "@clerk/express";
+import { logEvent } from "../services/logEvent";
 
 const router: IRouter = Router();
 
@@ -22,38 +22,12 @@ async function requirePlatformOwner(req: Request, res: Response, next: NextFunct
   next();
 }
 
-// Helper to write a system log entry
-export async function logEvent(opts: {
-  level?: "info" | "warn" | "error";
-  category?: string;
-  message: string;
-  metadata?: Record<string, unknown>;
-  orgId?: number;
-  userId?: string;
-}) {
-  try {
-    await db.execute(sql`
-      INSERT INTO system_logs (level, category, message, metadata, org_id, user_id)
-      VALUES (
-        ${opts.level ?? "info"},
-        ${opts.category ?? "general"},
-        ${opts.message},
-        ${opts.metadata ? JSON.stringify(opts.metadata) : null}::jsonb,
-        ${opts.orgId ?? null},
-        ${opts.userId ?? null}
-      )
-    `);
-  } catch {
-    // Never let logging crash the app
-  }
-}
-
-// ── Stats cache (5-minute TTL) — avoids full table scans on every dashboard load ──
+// ── Stats cache (5-minute TTL) ─────────────────────────────────────────────
 interface StatsCache { data: Record<string, number>; expiresAt: number }
 let statsCache: StatsCache | null = null;
-const STATS_TTL = 5 * 60 * 1000; // 5 minutes
+const STATS_TTL = 5 * 60 * 1000;
 
-function invalidateStatsCache() { statsCache = null; }
+export function invalidateStatsCache() { statsCache = null; }
 
 // ── GET /api/owner/check ───────────────────────────────────────────────────
 router.get("/owner/check", requireLocalUser, requirePlatformOwner, (_req, res) => {
@@ -62,16 +36,12 @@ router.get("/owner/check", requireLocalUser, requirePlatformOwner, (_req, res) =
 
 // ── GET /api/owner/stats ───────────────────────────────────────────────────
 router.get("/owner/stats", requireLocalUser, requirePlatformOwner, async (_req, res): Promise<void> => {
-  // Return cached stats if still fresh
   if (statsCache && Date.now() < statsCache.expiresAt) {
     res.json(statsCache.data);
     return;
   }
 
-  // Run all count queries in parallel
-  const [
-    [orgCount], [userCount], [moduleCount], [attemptCount], [todayAttempts],
-  ] = await Promise.all([
+  const [[orgCount], [userCount], [moduleCount], [attemptCount], [todayAttempts]] = await Promise.all([
     db.select({ count: count() }).from(organizations),
     db.select({ count: count() }).from(users),
     db.select({ count: count() }).from(modules),
@@ -80,11 +50,11 @@ router.get("/owner/stats", requireLocalUser, requirePlatformOwner, async (_req, 
       .where(sql`submitted_at >= NOW() - INTERVAL '24 hours'`),
   ]);
 
-  // Error count last 24h
-  const errorCountResult = await db.execute(sql`
-    SELECT COUNT(*) as count FROM system_logs WHERE level = 'error' AND created_at >= NOW() - INTERVAL '24 hours'
+  const errorResult = await db.execute(sql`
+    SELECT COUNT(*) as count FROM system_logs
+    WHERE level = 'error' AND created_at >= NOW() - INTERVAL '24 hours'
   `);
-  const errorCount = Number((errorCountResult.rows[0] as any)?.count ?? 0);
+  const errorsToday = Number((errorResult.rows[0] as any)?.count ?? 0);
 
   const data = {
     orgs: Number(orgCount.count),
@@ -92,7 +62,7 @@ router.get("/owner/stats", requireLocalUser, requirePlatformOwner, async (_req, 
     modules: Number(moduleCount.count),
     attempts: Number(attemptCount.count),
     attemptsToday: Number(todayAttempts.count),
-    errorsToday: errorCount,
+    errorsToday,
   };
 
   statsCache = { data, expiresAt: Date.now() + STATS_TTL };
@@ -100,6 +70,7 @@ router.get("/owner/stats", requireLocalUser, requirePlatformOwner, async (_req, 
 });
 
 // ── GET /api/owner/orgs ────────────────────────────────────────────────────
+// Returns per-org aggregates including error_count (errors in last 7 days)
 router.get("/owner/orgs", requireLocalUser, requirePlatformOwner, async (req, res): Promise<void> => {
   const limit = Math.min(parseInt(req.query.limit as string || "100", 10), 500);
   const offset = Math.max(parseInt(req.query.offset as string || "0", 10), 0);
@@ -109,14 +80,18 @@ router.get("/owner/orgs", requireLocalUser, requirePlatformOwner, async (req, re
       o.organization_id,
       o.name,
       COUNT(DISTINCT om.user_id) FILTER (WHERE om.status = 'active') AS member_count,
-      COUNT(DISTINCT m.module_id) AS module_count,
-      COUNT(DISTINCT a.attempt_id) AS attempt_count,
-      COUNT(DISTINCT asgn.assignment_id) AS assignment_count
+      COUNT(DISTINCT m.module_id)                                     AS module_count,
+      COUNT(DISTINCT a.attempt_id)                                    AS attempt_count,
+      COUNT(DISTINCT asgn.assignment_id)                              AS assignment_count,
+      COUNT(DISTINCT sl.log_id)
+        FILTER (WHERE sl.level = 'error'
+                  AND sl.created_at >= NOW() - INTERVAL '7 days')    AS error_count
     FROM organizations o
-    LEFT JOIN organization_memberships om ON om.organization_id = o.organization_id
-    LEFT JOIN modules m ON m.organization_id = o.organization_id
-    LEFT JOIN attempts a ON a.organization_id = o.organization_id
-    LEFT JOIN assignments asgn ON asgn.organization_id = o.organization_id
+    LEFT JOIN organization_memberships om   ON om.organization_id   = o.organization_id
+    LEFT JOIN modules m                     ON m.organization_id    = o.organization_id
+    LEFT JOIN attempts a                    ON a.organization_id    = o.organization_id
+    LEFT JOIN assignments asgn              ON asgn.organization_id = o.organization_id
+    LEFT JOIN system_logs sl               ON sl.org_id            = o.organization_id
     GROUP BY o.organization_id, o.name
     ORDER BY o.organization_id ASC
     LIMIT ${limit} OFFSET ${offset}
@@ -133,7 +108,6 @@ router.get("/owner/orgs/:id", requireLocalUser, requirePlatformOwner, async (req
   const [org] = await db.select().from(organizations).where(eq(organizations.organizationId, orgId)).limit(1);
   if (!org) { res.status(404).json({ error: "Org not found" }); return; }
 
-  // Fetch members and modules in parallel
   const [members, moduleRows] = await Promise.all([
     db.select({
       userId: users.userId,
@@ -163,19 +137,13 @@ router.post("/owner/orgs", requireLocalUser, requirePlatformOwner, async (req, r
   const { name, adminEmail } = req.body;
   if (!name?.trim()) { res.status(400).json({ error: "Organization name is required" }); return; }
 
-  // Create the org
   const [newOrg] = await db.insert(organizations).values({ name: name.trim() }).returning();
   invalidateStatsCache();
 
-  // If an admin email is provided, find or look up the user and add them as owner
   if (adminEmail?.trim()) {
     const email = adminEmail.trim().toLowerCase();
-    const [existingUser] = await db.select().from(users)
-      .where(eq(users.email, email))
-      .limit(1);
-
+    const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
     if (existingUser) {
-      // Add them to the org as owner
       await db.insert(organizationMemberships).values({
         organizationId: newOrg.organizationId,
         userId: existingUser.userId,
@@ -190,6 +158,7 @@ router.post("/owner/orgs", requireLocalUser, requirePlatformOwner, async (req, r
     category: "org_management",
     message: `New organization created: "${name}"`,
     metadata: { orgId: newOrg.organizationId, name, adminEmail },
+    orgId: newOrg.organizationId,
   });
 
   res.status(201).json(newOrg);
@@ -215,6 +184,7 @@ router.patch("/owner/orgs/:id", requireLocalUser, requirePlatformOwner, async (r
     category: "org_management",
     message: `Organization renamed to "${name}"`,
     metadata: { orgId },
+    orgId,
   });
 
   res.json(updated);
@@ -236,26 +206,44 @@ router.delete("/owner/orgs/:id", requireLocalUser, requirePlatformOwner, async (
     category: "org_management",
     message: `Organization deleted: "${existing.name}" (ID: ${orgId})`,
     metadata: { orgId, name: existing.name },
+    orgId,
   });
 
   res.status(204).send();
 });
 
 // ── GET /api/owner/logs ────────────────────────────────────────────────────
+// Supports ?level=error&category=grading&orgId=3&limit=200
 router.get("/owner/logs", requireLocalUser, requirePlatformOwner, async (req, res): Promise<void> => {
-  const level = req.query.level as string | undefined;
-  const category = req.query.category as string | undefined;
-  const limit = Math.min(parseInt(req.query.limit as string ?? "100", 10), 500);
+  const level     = req.query.level    as string | undefined;
+  const category  = req.query.category as string | undefined;
+  const orgIdRaw  = req.query.orgId    as string | undefined;
+  const orgId     = orgIdRaw ? parseInt(orgIdRaw, 10) : null;
+  const limit     = Math.min(parseInt(req.query.limit as string ?? "200", 10), 500);
 
-  let whereClause = "WHERE 1=1";
-  if (level && level !== "all") whereClause += ` AND level = '${level.replace(/'/g, "''")}'`;
-  if (category && category !== "all") whereClause += ` AND category = '${category.replace(/'/g, "''")}'`;
+  // Build safe WHERE clauses (values are controlled/validated above)
+  const conditions: string[] = ["1=1"];
+  if (level && level !== "all")    conditions.push(`sl.level = '${level.replace(/'/g, "''")}'`);
+  if (category && category !== "all") conditions.push(`sl.category = '${category.replace(/'/g, "''")}'`);
+  if (orgId && !isNaN(orgId))     conditions.push(`sl.org_id = ${orgId}`);
+
+  const whereClause = `WHERE ${conditions.join(" AND ")}`;
 
   const rows = await db.execute(sql.raw(`
-    SELECT log_id, level, category, message, metadata, org_id, user_id, created_at
-    FROM system_logs
+    SELECT
+      sl.log_id,
+      sl.level,
+      sl.category,
+      sl.message,
+      sl.metadata,
+      sl.org_id,
+      sl.user_id,
+      sl.created_at,
+      o.name AS org_name
+    FROM system_logs sl
+    LEFT JOIN organizations o ON o.organization_id = sl.org_id
     ${whereClause}
-    ORDER BY created_at DESC
+    ORDER BY sl.created_at DESC
     LIMIT ${limit}
   `));
 
@@ -263,7 +251,6 @@ router.get("/owner/logs", requireLocalUser, requirePlatformOwner, async (req, re
 });
 
 // ── GET /api/owner/activity ────────────────────────────────────────────────
-// Recent platform-wide activity (attempts, new users, new orgs)
 router.get("/owner/activity", requireLocalUser, requirePlatformOwner, async (_req, res): Promise<void> => {
   const [recentAttempts, recentUsers] = await Promise.all([
     db.execute(sql`
@@ -293,10 +280,7 @@ router.get("/owner/activity", requireLocalUser, requirePlatformOwner, async (_re
       .limit(10),
   ]);
 
-  res.json({
-    recentAttempts: recentAttempts.rows,
-    recentUsers,
-  });
+  res.json({ recentAttempts: recentAttempts.rows, recentUsers });
 });
 
 export default router;

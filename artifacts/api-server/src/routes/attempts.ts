@@ -3,6 +3,7 @@ import { db, attempts, modules, users, submissionScores, organizationMemberships
 import { eq, and, desc, asc, inArray, count, avg, sql } from "drizzle-orm";
 import { requireLocalUser, isPlatformOwner } from "../middleware/auth";
 import { gradeWithLLM } from "../services/llmGraderService";
+import { logEvent } from "../services/logEvent";
 
 const router: IRouter = Router();
 
@@ -265,6 +266,16 @@ router.post("/attempts/:id/submit", requireLocalUser, async (req, res): Promise<
       : JSON.stringify(questionResponses),
   }).where(eq(attempts.attemptId, attemptId)).returning();
 
+  // Log submission for the org audit trail
+  void logEvent({
+    level: "info",
+    category: "grading",
+    message: `Attempt #${attemptId} submitted for review`,
+    metadata: { attemptId, moduleId: existing.moduleId },
+    orgId: existing.organizationId,
+    userId: localUser.userId,
+  });
+
   res.json(updated);
 });
 
@@ -375,28 +386,23 @@ router.post("/attempts/:id/grade", requireLocalUser, async (req, res): Promise<v
     showResultsToLearner, showFeedbackToLearner,
   } = req.body;
 
-  // Update attempt and upsert score in parallel-friendly sequence
-  const [updatedAttempt, [existingScore]] = await Promise.all([
-    db.update(attempts).set({
-      totalScore: totalScore ?? null,
-      aiFeedback: overallFeedback ?? null,
-      strengths: strengths ?? null,
-      missedPoints: missedPoints ?? null,
-      bestPracticeReasoning: bestPracticeReasoning ?? null,
-      recommendedResponse: recommendedResponse ?? null,
-      takeawaySummary: takeawaySummary ?? null,
-      attemptState: "graded",
-      resultStatus: resultStatus ?? "approved",
-      gradedAt: new Date().toISOString(),
-      gradedByType: "manual",
-      gradedByUserId: localUser.userId,
-    }).where(eq(attempts.attemptId, attemptId)).returning().then(r => r[0]),
-    db.select().from(submissionScores)
-      .where(eq(submissionScores.attemptId, attemptId)).limit(1),
-  ]);
+  // Update attempt first
+  const updatedAttempt = await db.update(attempts).set({
+    totalScore: totalScore ?? null,
+    aiFeedback: overallFeedback ?? null,
+    strengths: strengths ?? null,
+    missedPoints: missedPoints ?? null,
+    bestPracticeReasoning: bestPracticeReasoning ?? null,
+    recommendedResponse: recommendedResponse ?? null,
+    takeawaySummary: takeawaySummary ?? null,
+    attemptState: "graded",
+    resultStatus: resultStatus ?? "approved",
+    gradedAt: new Date().toISOString(),
+    gradedByType: "manual",
+    gradedByUserId: localUser.userId,
+  }).where(eq(attempts.attemptId, attemptId)).returning().then(r => r[0]);
 
   const scoreValues = {
-    attemptId,
     adminTotalScore: String(totalScore ?? 0),
     finalTotalScore: String(totalScore ?? 0),
     overallAdminFeedback: overallFeedback ?? null,
@@ -415,19 +421,30 @@ router.post("/attempts/:id/grade", requireLocalUser, async (req, res): Promise<v
     scoredAt: new Date().toISOString(),
   };
 
-  let score;
-  if (existingScore) {
-    const [updated] = await db.update(submissionScores).set(scoreValues)
-      .where(eq(submissionScores.attemptId, attemptId)).returning();
-    score = updated;
-  } else {
-    const [created] = await db.insert(submissionScores).values({
-      ...scoreValues,
+  // Upsert score — ON CONFLICT handles the race condition when two admins
+  // grade the same attempt simultaneously (unique constraint on attempt_id).
+  const [score] = await db.insert(submissionScores)
+    .values({
+      attemptId,
       totalScore: totalScore ?? 0,
       solutionScore: 0,
-    }).returning();
-    score = created;
-  }
+      ...scoreValues,
+    })
+    .onConflictDoUpdate({
+      target: submissionScores.attemptId,
+      set: scoreValues,
+    })
+    .returning();
+
+  // Log the grading event for the org's audit trail
+  await logEvent({
+    level: "info",
+    category: "grading",
+    message: `Attempt #${attemptId} graded — score: ${totalScore ?? 0}, status: ${resultStatus ?? "approved"}`,
+    metadata: { attemptId, totalScore, resultStatus },
+    orgId: attempt.organizationId,
+    userId: localUser.userId,
+  });
 
   res.json({ attempt: updatedAttempt, score });
 });
