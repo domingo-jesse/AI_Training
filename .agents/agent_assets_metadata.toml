@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "haJmjMOxg41PJogeTnMye"
+uri = "file://ai-training-simulator-api.postman_collection.json"
+type = "unspecified"
+title = "AI Training Simulator — Postman Collection"

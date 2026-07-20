@@ -1,0 +1,783 @@
+{
+  "info": {
+    "_postman_id": "ai-training-simulator-api",
+    "name": "AI Training Simulator API",
+    "description": "Complete API reference for the AI Training Simulator platform.\n\n**Setup:**\n1. Set the `baseUrl` variable to your server (default: `http://localhost:8080/api`)\n2. Auth is handled via Clerk session cookies — after signing in through the web app your browser session will be active. For direct API calls, grab your session token from the browser (DevTools → Application → Cookies → `__session`) and add it as a Cookie header.\n\n**Roles:**\n- 🟣 Owner — platform-wide access (domingo.jesse@gmail.com)\n- 🔵 Admin — org-level module/user management\n- 🟢 Learner — can only see assigned modules and own attempts",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080/api", "type": "string" },
+    { "key": "orgId",   "value": "1",  "type": "string" },
+    { "key": "moduleId","value": "1",  "type": "string" },
+    { "key": "userId",  "value": "",   "type": "string" },
+    { "key": "attemptId","value": "1", "type": "string" },
+    { "key": "groupId", "value": "1",  "type": "string" },
+    { "key": "questionId","value":"1", "type": "string" }
+  ],
+  "item": [
+
+    {
+      "name": "🏥 Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "Returns `{ status: 'ok' }`. No auth required."
+          }
+        },
+        {
+          "name": "Health check (legacy)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/healthz", "host": ["{{baseUrl}}"], "path": ["healthz"] },
+            "description": "Legacy alias for /health."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "👤 Users",
+      "item": [
+        {
+          "name": "Get current user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users","me"] },
+            "description": "Returns the authenticated user's profile, org membership, and role."
+          }
+        },
+        {
+          "name": "Sync Clerk user",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"name\": \"Jane Smith\",\n  \"authProvider\": \"clerk\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users/sync", "host": ["{{baseUrl}}"], "path": ["users","sync"] },
+            "description": "Called automatically on first login. Provisions a Clerk user into the local DB."
+          }
+        },
+        {
+          "name": "Update current user",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Smith\",\n  \"username\": \"janesmith\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users","me"] },
+            "description": "Update display name or username for the current user."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🏢 Organizations",
+      "item": [
+        {
+          "name": "List my organizations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/organizations", "host": ["{{baseUrl}}"], "path": ["organizations"] },
+            "description": "Returns all org memberships for the current user."
+          }
+        },
+        {
+          "name": "List org members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{orgId}}/members?page=1&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations","{{orgId}}","members"],
+              "query": [
+                { "key": "page",  "value": "1" },
+                { "key": "limit", "value": "50" }
+              ]
+            },
+            "description": "🔵 Admin. Lists all members in the org with pagination."
+          }
+        },
+        {
+          "name": "Add member to org",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"learner@company.com\",\n  \"role\": \"learner\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/organizations/{{orgId}}/members", "host": ["{{baseUrl}}"], "path": ["organizations","{{orgId}}","members"] },
+            "description": "🔵 Admin. Adds an existing user to the org. Role: 'admin' | 'learner'."
+          }
+        },
+        {
+          "name": "Update member role",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"admin\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/organizations/{{orgId}}/members/{{userId}}", "host": ["{{baseUrl}}"], "path": ["organizations","{{orgId}}","members","{{userId}}"] },
+            "description": "🔵 Admin. Changes a member's role."
+          }
+        },
+        {
+          "name": "Remove member from org",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/organizations/{{orgId}}/members/{{userId}}", "host": ["{{baseUrl}}"], "path": ["organizations","{{orgId}}","members","{{userId}}"] },
+            "description": "🔵 Admin. Deactivates (soft-deletes) a member."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "📚 Modules",
+      "item": [
+        {
+          "name": "List modules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/modules?orgId={{orgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["modules"],
+              "query": [{ "key": "orgId", "value": "{{orgId}}" }]
+            },
+            "description": "🔵 Admin. Lists all training modules for an organization."
+          }
+        },
+        {
+          "name": "Get module + questions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/modules/{{moduleId}}", "host": ["{{baseUrl}}"], "path": ["modules","{{moduleId}}"] },
+            "description": "Returns module details including all questions and their config."
+          }
+        },
+        {
+          "name": "Create module",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orgId\": {{orgId}},\n  \"title\": \"Handling Difficult Customers\",\n  \"category\": \"Customer Service\",\n  \"difficulty\": \"intermediate\",\n  \"description\": \"Practice de-escalating frustrated customers.\",\n  \"estimatedTime\": \"20 minutes\",\n  \"learningObjectives\": \"Identify escalation triggers. Apply de-escalation techniques. Maintain composure under pressure.\",\n  \"scenarioTicket\": \"Customer called in furious about a 3-week delayed order.\",\n  \"scenarioContext\": \"It's a Monday morning. You receive a call from Maria, who ordered a birthday gift for her daughter 3 weeks ago...\",\n  \"hiddenRootCause\": \"Warehouse software glitch caused the order to be stuck in processing.\",\n  \"expectedDiagnosis\": \"Acknowledge the delay, apologize sincerely, escalate to priority shipping.\",\n  \"expectedReasoningPath\": \"Empathize → Investigate → Resolve → Follow up\",\n  \"expectedNextSteps\": \"Offer refund or priority re-ship. Log the warehouse issue.\",\n  \"lessonTakeaway\": \"Angry customers want to feel heard before they want solutions.\",\n  \"llmScoringEnabled\": true,\n  \"llmGraderInstructions\": \"Score based on empathy, clarity, and whether the learner offered a resolution.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/modules", "host": ["{{baseUrl}}"], "path": ["modules"] },
+            "description": "🔵 Admin. Creates a new training module. Questions are added separately."
+          }
+        },
+        {
+          "name": "Update module",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Handling Difficult Customers v2\",\n  \"difficulty\": \"advanced\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/modules/{{moduleId}}", "host": ["{{baseUrl}}"], "path": ["modules","{{moduleId}}"] },
+            "description": "🔵 Admin. Partial update — only include fields you want to change."
+          }
+        },
+        {
+          "name": "Delete module",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/modules/{{moduleId}}", "host": ["{{baseUrl}}"], "path": ["modules","{{moduleId}}"] },
+            "description": "🔵 Admin. Deletes module and all its questions."
+          }
+        },
+        {
+          "name": "Add question to module",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"questionText\": \"How would you open this call to immediately put Maria at ease?\",\n  \"expectedAnswer\": \"Apologise immediately, use her name, acknowledge the inconvenience.\",\n  \"maxPoints\": 15,\n  \"questionType\": \"open_text\",\n  \"rubric\": \"Award full marks for empathy + acknowledgement. Deduct for defensiveness.\",\n  \"questionOrder\": 1\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/modules/{{moduleId}}/questions", "host": ["{{baseUrl}}"], "path": ["modules","{{moduleId}}","questions"] },
+            "description": "🔵 Admin. Adds a question. questionType: 'open_text' | 'ai_conversation'.\n\nFor ai_conversation, also include:\n- aiRoleOrPersona: 'Angry Customer — Maria'\n- aiConversationPrompt: full character brief (personality, traits, lines)\n- evaluationFocus: what the grader should look for"
+          }
+        },
+        {
+          "name": "Add AI conversation question",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"questionText\": \"Speak directly with Maria and resolve her complaint.\",\n  \"expectedAnswer\": \"Learner should apologise, investigate, offer refund or priority re-ship.\",\n  \"maxPoints\": 20,\n  \"questionType\": \"ai_conversation\",\n  \"rubric\": \"Score on empathy, resolution quality, and professionalism under pressure.\",\n  \"questionOrder\": 2,\n  \"aiRoleOrPersona\": \"Angry Customer — Maria\",\n  \"aiConversationPrompt\": \"You are Maria, a mother who ordered a birthday gift for her daughter 3 weeks ago and it never arrived. You are furious — this ruined your daughter's birthday. You are not immediately mollified by apologies; you want concrete action. If the agent is dismissive or reads from a script, you escalate. If they genuinely empathise and offer something real (refund, priority shipping, manager), you soften slightly but remain curt. You speak in short, sharp sentences. You interrupt. You say things like 'I've heard that before' and 'That's not good enough.'\",\n  \"evaluationFocus\": \"Does the learner de-escalate effectively? Do they offer a real resolution? Do they stay calm?\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/modules/{{moduleId}}/questions", "host": ["{{baseUrl}}"], "path": ["modules","{{moduleId}}","questions"] },
+            "description": "🔵 Admin. AI roleplay question — the learner speaks live with the AI character."
+          }
+        },
+        {
+          "name": "Update question",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"maxPoints\": 20,\n  \"rubric\": \"Updated rubric here.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/modules/{{moduleId}}/questions/{{questionId}}", "host": ["{{baseUrl}}"], "path": ["modules","{{moduleId}}","questions","{{questionId}}"] },
+            "description": "🔵 Admin. Partial update on a question."
+          }
+        },
+        {
+          "name": "Delete question",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/modules/{{moduleId}}/questions/{{questionId}}", "host": ["{{baseUrl}}"], "path": ["modules","{{moduleId}}","questions","{{questionId}}"] },
+            "description": "🔵 Admin."
+          }
+        },
+        {
+          "name": "AI — Quick generate module",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Sales objection handling for enterprise SaaS — prospects who say the price is too high\",\n  \"difficulty\": \"intermediate\",\n  \"questionCount\": 5,\n  \"orgId\": {{orgId}}\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/modules/generate", "host": ["{{baseUrl}}"], "path": ["modules","generate"] },
+            "description": "🔵 Admin. One-shot AI generation. Returns a complete module draft (not saved — admin reviews and saves manually)."
+          }
+        },
+        {
+          "name": "AI — Nova planning chat",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"I want to build a module for handling irate customers\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/modules/plan-chat", "host": ["{{baseUrl}}"], "path": ["modules","plan-chat"] },
+            "description": "🔵 Admin. Conversational module planning with Nova (GPT-4o). Pass the full message history each turn.\n\nResponse: { done: false, message: string } or { done: true, message: string, module: {...} }\n\nWhen done=true, the module object contains the complete generated module draft."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "📋 Assignments",
+      "item": [
+        {
+          "name": "Get my assignments (learner)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/assignments/my", "host": ["{{baseUrl}}"], "path": ["assignments","my"] },
+            "description": "🟢 Learner. Returns all active module assignments for the current user."
+          }
+        },
+        {
+          "name": "List org assignments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/assignments?orgId={{orgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["assignments"],
+              "query": [{ "key": "orgId", "value": "{{orgId}}" }]
+            },
+            "description": "🔵 Admin. All assignments in the org."
+          }
+        },
+        {
+          "name": "Assign module to learner",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orgId\": {{orgId}},\n  \"moduleId\": {{moduleId}},\n  \"learnerId\": \"{{userId}}\",\n  \"dueDate\": \"2026-08-31T23:59:59Z\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/assignments", "host": ["{{baseUrl}}"], "path": ["assignments"] },
+            "description": "🔵 Admin. Assigns a module to a specific learner with an optional due date."
+          }
+        },
+        {
+          "name": "Remove assignment",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/assignments/1", "host": ["{{baseUrl}}"], "path": ["assignments","1"] },
+            "description": "🔵 Admin. Soft-deletes an assignment."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🎯 Attempts",
+      "item": [
+        {
+          "name": "Start attempt",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"moduleId\": {{moduleId}},\n  \"orgId\": {{orgId}}\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/attempts", "host": ["{{baseUrl}}"], "path": ["attempts"] },
+            "description": "🟢 Learner. Creates a new attempt record. Returns attemptId for subsequent saves."
+          }
+        },
+        {
+          "name": "Get my attempts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/attempts/my", "host": ["{{baseUrl}}"], "path": ["attempts","my"] },
+            "description": "🟢 Learner. Lists all the current user's attempts with status and score."
+          }
+        },
+        {
+          "name": "List org attempts (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/attempts?orgId={{orgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["attempts"],
+              "query": [{ "key": "orgId", "value": "{{orgId}}" }]
+            },
+            "description": "🔵 Admin. All attempts across the org."
+          }
+        },
+        {
+          "name": "Get attempt details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/attempts/{{attemptId}}", "host": ["{{baseUrl}}"], "path": ["attempts","{{attemptId}}"] },
+            "description": "Returns full attempt with question responses and grading."
+          }
+        },
+        {
+          "name": "Auto-save responses",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"questionResponses\": [\n    {\n      \"questionId\": 1,\n      \"questionText\": \"How would you open this call?\",\n      \"response\": \"I would start by apologising sincerely and using Maria's name...\"\n    }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/attempts/{{attemptId}}", "host": ["{{baseUrl}}"], "path": ["attempts","{{attemptId}}"] },
+            "description": "🟢 Learner. Saves draft responses mid-simulation. Safe to call repeatedly."
+          }
+        },
+        {
+          "name": "Submit attempt",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"questionResponses\": [\n    {\n      \"questionId\": 1,\n      \"questionText\": \"How would you open this call?\",\n      \"response\": \"I would apologise immediately, use Maria's name, and acknowledge the impact...\"\n    },\n    {\n      \"questionId\": 2,\n      \"questionText\": \"Speak directly with Maria and resolve her complaint.\",\n      \"response\": \"[Angry Customer — Maria]: Where is my order? This is unacceptable!\\n\\n[You]: Maria, I'm so sorry — I can hear how frustrated you are and that's completely valid. Let me pull up your order right now.\\n\\n[Angry Customer — Maria]: I've been waiting 3 weeks. My daughter's birthday was ruined.\\n\\n[You]: That breaks my heart to hear. Here's what I'm going to do right now: I'm flagging this for priority overnight shipping and processing a full refund simultaneously.\"\n    }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/attempts/{{attemptId}}/submit", "host": ["{{baseUrl}}"], "path": ["attempts","{{attemptId}}","submit"] },
+            "description": "🟢 Learner. Final submission. Locks the attempt for grading."
+          }
+        },
+        {
+          "name": "Preview AI grading",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/attempts/{{attemptId}}/grade-ai", "host": ["{{baseUrl}}"], "path": ["attempts","{{attemptId}}","grade-ai"] },
+            "description": "🔵 Admin. Runs GPT-4o grading and returns suggestions — does not save. Admin can review before applying."
+          }
+        },
+        {
+          "name": "Save manual grade",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grades\": [\n    { \"questionId\": 1, \"score\": 13, \"feedback\": \"Strong empathy, good use of name. Could have mentioned investigating sooner.\" },\n    { \"questionId\": 2, \"score\": 18, \"feedback\": \"Excellent de-escalation. Offered concrete resolution quickly. Stayed calm throughout.\" }\n  ],\n  \"overallFeedback\": \"Strong performance overall. Work on frontloading the investigation step.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/attempts/{{attemptId}}/grade", "host": ["{{baseUrl}}"], "path": ["attempts","{{attemptId}}","grade"] },
+            "description": "🔵 Admin. Records final grades and feedback for each question."
+          }
+        },
+        {
+          "name": "Org progress stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/progress/org?orgId={{orgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["progress","org"],
+              "query": [{ "key": "orgId", "value": "{{orgId}}" }]
+            },
+            "description": "🔵 Admin. Aggregate stats: completion rates, avg scores, per-module breakdown."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "👥 Admin — Users",
+      "item": [
+        {
+          "name": "List users in org",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users?orgId={{orgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin","users"],
+              "query": [{ "key": "orgId", "value": "{{orgId}}" }]
+            },
+            "description": "🔵 Admin. All users in the org with their role and status."
+          }
+        },
+        {
+          "name": "Add user to org",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orgId\": {{orgId}},\n  \"email\": \"newlearner@company.com\",\n  \"name\": \"Alex Johnson\",\n  \"role\": \"learner\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/admin/users", "host": ["{{baseUrl}}"], "path": ["admin","users"] },
+            "description": "🔵 Admin. Creates and adds a single user to the org."
+          }
+        },
+        {
+          "name": "Bulk import users",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orgId\": {{orgId}},\n  \"users\": [\n    { \"email\": \"alice@company.com\", \"name\": \"Alice Brown\", \"role\": \"learner\" },\n    { \"email\": \"bob@company.com\",   \"name\": \"Bob Chen\",   \"role\": \"learner\" },\n    { \"email\": \"carol@company.com\", \"name\": \"Carol Davis\",\"role\": \"admin\"  }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/admin/users/bulk", "host": ["{{baseUrl}}"], "path": ["admin","users","bulk"] },
+            "description": "🔵 Admin. Import multiple users in one call."
+          }
+        },
+        {
+          "name": "Update user status / role",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"admin\",\n  \"status\": \"active\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/admin/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["admin","users","{{userId}}"] },
+            "description": "🔵 Admin. Update role or status (active/inactive)."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🗂️ Groups",
+      "item": [
+        {
+          "name": "List groups",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/groups?orgId={{orgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["groups"],
+              "query": [{ "key": "orgId", "value": "{{orgId}}" }]
+            },
+            "description": "🔵 Admin. Returns all groups with member counts."
+          }
+        },
+        {
+          "name": "Create group",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orgId\": {{orgId}},\n  \"name\": \"Sales Team — West\",\n  \"color\": \"#6366f1\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/groups", "host": ["{{baseUrl}}"], "path": ["groups"] },
+            "description": "🔵 Admin. Creates a learner group."
+          }
+        },
+        {
+          "name": "Update group",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sales Team — East\",\n  \"color\": \"#10b981\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/groups/{{groupId}}", "host": ["{{baseUrl}}"], "path": ["groups","{{groupId}}"] },
+            "description": "🔵 Admin."
+          }
+        },
+        {
+          "name": "Delete group",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/groups/{{groupId}}", "host": ["{{baseUrl}}"], "path": ["groups","{{groupId}}"] },
+            "description": "🔵 Admin."
+          }
+        },
+        {
+          "name": "Add user to group",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/groups/{{groupId}}/members", "host": ["{{baseUrl}}"], "path": ["groups","{{groupId}}","members"] },
+            "description": "🔵 Admin."
+          }
+        },
+        {
+          "name": "Remove user from group",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/groups/{{groupId}}/members/{{userId}}", "host": ["{{baseUrl}}"], "path": ["groups","{{groupId}}","members","{{userId}}"] },
+            "description": "🔵 Admin."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "⚙️ Settings",
+      "item": [
+        {
+          "name": "Get org settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/settings?orgId={{orgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["settings"],
+              "query": [{ "key": "orgId", "value": "{{orgId}}" }]
+            },
+            "description": "🔵 Admin. Returns org training settings: passing score, max attempts, etc."
+          }
+        },
+        {
+          "name": "Update org settings",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orgId\": {{orgId}},\n  \"passingScore\": 70,\n  \"maxAttempts\": 3,\n  \"allowRetakes\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/settings", "host": ["{{baseUrl}}"], "path": ["settings"] },
+            "description": "🔵 Admin. Update training policy settings for the org."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🟣 Owner Portal",
+      "item": [
+        {
+          "name": "Check owner status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/owner/check", "host": ["{{baseUrl}}"], "path": ["owner","check"] },
+            "description": "🟣 Owner only. Returns 200 if the current user is the platform owner."
+          }
+        },
+        {
+          "name": "Platform stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/owner/stats", "host": ["{{baseUrl}}"], "path": ["owner","stats"] },
+            "description": "🟣 Owner. High-level metrics: total orgs, users, modules, attempts."
+          }
+        },
+        {
+          "name": "List all orgs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/owner/orgs", "host": ["{{baseUrl}}"], "path": ["owner","orgs"] },
+            "description": "🟣 Owner. All organizations and their activity levels."
+          }
+        },
+        {
+          "name": "Get org detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/owner/orgs/{{orgId}}", "host": ["{{baseUrl}}"], "path": ["owner","orgs","{{orgId}}"] },
+            "description": "🟣 Owner. Detailed view of a specific org."
+          }
+        },
+        {
+          "name": "Create org",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme Corp\",\n  \"adminEmail\": \"admin@acme.com\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/owner/orgs", "host": ["{{baseUrl}}"], "path": ["owner","orgs"] },
+            "description": "🟣 Owner. Creates a new tenant organization."
+          }
+        },
+        {
+          "name": "Rename org",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme Corporation\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/owner/orgs/{{orgId}}", "host": ["{{baseUrl}}"], "path": ["owner","orgs","{{orgId}}"] },
+            "description": "🟣 Owner."
+          }
+        },
+        {
+          "name": "Delete org",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/owner/orgs/{{orgId}}", "host": ["{{baseUrl}}"], "path": ["owner","orgs","{{orgId}}"] },
+            "description": "🟣 Owner. Permanently deletes an org and all its data."
+          }
+        },
+        {
+          "name": "Platform logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/owner/logs", "host": ["{{baseUrl}}"], "path": ["owner","logs"] },
+            "description": "🟣 Owner. System-wide event logs."
+          }
+        },
+        {
+          "name": "Recent platform activity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/owner/activity", "host": ["{{baseUrl}}"], "path": ["owner","activity"] },
+            "description": "🟣 Owner. Recent attempts and new signups across all orgs."
+          }
+        },
+        {
+          "name": "Bulk import users (any org)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orgId\": {{orgId}},\n  \"users\": [\n    { \"email\": \"user1@company.com\", \"name\": \"User One\", \"role\": \"learner\" },\n    { \"email\": \"user2@company.com\", \"name\": \"User Two\", \"role\": \"learner\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/owner/users/bulk", "host": ["{{baseUrl}}"], "path": ["owner","users","bulk"] },
+            "description": "🟣 Owner. Bulk-import users into any org."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🎙️ Voice (Deepgram)",
+      "item": [
+        {
+          "name": "Transcribe audio (STT)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "audio/webm" }],
+            "body": {
+              "mode": "file",
+              "file": { "src": "" }
+            },
+            "url": { "raw": "{{baseUrl}}/deepgram/transcribe", "host": ["{{baseUrl}}"], "path": ["deepgram","transcribe"] },
+            "description": "Converts raw audio to text using Deepgram Nova-2.\n\nSend audio binary as request body. Set Content-Type to match your audio format: audio/webm, audio/mp4, audio/wav, etc.\n\nReturns: { transcript: string, confidence: number }"
+          }
+        },
+        {
+          "name": "Text to speech (TTS)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Hello! I'm Nova, your instructional design consultant. What kind of training module would you like to build today?\",\n  \"voice\": \"aura-asteria-en\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/deepgram/speak", "host": ["{{baseUrl}}"], "path": ["deepgram","speak"] },
+            "description": "Converts text to speech using Deepgram Aura.\n\nReturns: audio/mpeg binary stream.\n\nDefault voice: aura-asteria-en (female, warm). Other options: aura-orion-en (male), aura-luna-en, aura-stella-en."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🤖 AI Conversation (Roleplay)",
+      "item": [
+        {
+          "name": "Character chat turn",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"persona\": \"Angry Customer — Maria\",\n  \"systemPrompt\": \"You are Maria, a mother who ordered a birthday gift for her daughter 3 weeks ago and it never arrived. You are furious. You speak in short, sharp sentences. You say things like 'I've heard that before' and 'That's not good enough.' If the agent genuinely empathises and offers something concrete, you soften very slightly but remain curt.\",\n  \"history\": [\n    { \"role\": \"assistant\", \"content\": \"WHERE is my order? This is completely unacceptable!\" },\n    { \"role\": \"user\", \"content\": \"Maria, I'm so sorry to hear this — let me look into your order right now.\" }\n  ],\n  \"userMessage\": \"I can see your order was delayed in our warehouse. I'm going to escalate this to priority shipping and process a full refund at the same time.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/conversation/chat", "host": ["{{baseUrl}}"], "path": ["conversation","chat"] },
+            "description": "Real-time in-character AI response for learner simulations.\n\nThe AI stays in character as the persona. Pass the full conversation history each turn (oldest first).\n\nHistory format:\n- role: 'assistant' = AI character, 'user' = learner\n\nReturns: { message: string } — the character's next line.\n\nUsed internally by AiConversationChat component. Call directly to integrate into your own app."
+          }
+        }
+      ]
+    }
+
+  ]
+}
