@@ -10,7 +10,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 // Auth/landing pages — eagerly loaded (tiny, on the critical path)
 import LandingPage from "@/pages/LandingPage";
 import SignInPage from "@/pages/auth/SignInPage";
-import AdminSignInPage from "@/pages/auth/AdminSignInPage";
 import SignUpPage from "@/pages/auth/SignUpPage";
 
 // Admin pages — lazy loaded
@@ -207,7 +206,7 @@ function ClerkProviderWithRoutes() {
           <Switch>
             <Route path="/" component={HomeRedirect} />
             <Route path="/sign-in/*?" component={SignInPage} />
-            <Route path="/admin/sign-in/*?" component={AdminSignInPage} />
+            <Route path="/admin/sign-in/*?"><Redirect to="/sign-in" /></Route>
             <Route path="/sign-up/*?" component={SignUpPage} />
 
             <Route path="/dashboard" component={DashboardPage} />

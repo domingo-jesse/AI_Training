@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { organizations, users, modules, attempts, organizationMemberships } from "@workspace/db";
-import { eq, sql, desc, count } from "drizzle-orm";
+import { organizations, users as usersTable, modules, attempts, organizationMemberships } from "@workspace/db";
+import { eq, sql, desc, count, and } from "drizzle-orm";
 import { requireLocalUser } from "../middleware/auth";
 import { logEvent } from "../services/logEvent";
 
@@ -248,6 +248,91 @@ router.get("/owner/logs", requireLocalUser, requirePlatformOwner, async (req, re
   `));
 
   res.json(rows.rows);
+});
+
+// ── POST /api/owner/users/bulk ─────────────────────────────────────────────
+// Owner portal: bulk-import users into any org. Same logic as admin bulk import.
+router.post("/owner/users/bulk", requireLocalUser, requirePlatformOwner, async (req, res): Promise<void> => {
+  const { orgId, users } = req.body;
+  if (!orgId || !Array.isArray(users) || users.length === 0) {
+    res.status(400).json({ error: "orgId and a non-empty users array are required" }); return;
+  }
+  if (users.length > 500) {
+    res.status(400).json({ error: "Maximum 500 users per bulk import" }); return;
+  }
+
+  const invalid = users.find((u: any) => !u.email?.includes("@"));
+  if (invalid) {
+    res.status(400).json({ error: `Invalid email: "${invalid.email}"` }); return;
+  }
+
+  const VALID_ROLES = ["learner", "manager", "admin", "owner"];
+
+  const results = await Promise.allSettled(
+    users.map(async (u: { name?: string; email: string; role?: string }) => {
+      const cleanEmail = u.email.trim().toLowerCase();
+      const safeRole = VALID_ROLES.includes(u.role ?? "") ? u.role! : "learner";
+
+      // Check existing user
+      const [existing] = await db.select().from(usersTable)
+        .where(eq(usersTable.email, cleanEmail)).limit(1);
+
+      let userId: number;
+      let status: "created" | "existing";
+
+      if (existing) {
+        userId = existing.userId;
+        status = "existing";
+        await db.update(usersTable)
+          .set({ role: safeRole === "learner" ? "learner" : "admin", isActive: true })
+          .where(eq(usersTable.userId, userId));
+        const [mem] = await db.select().from(organizationMemberships)
+          .where(and(eq(organizationMemberships.organizationId, orgId), eq(organizationMemberships.userId, userId))).limit(1);
+        if (mem) {
+          await db.update(organizationMemberships).set({ status: "active", role: safeRole }).where(eq(organizationMemberships.id, mem.id));
+        } else {
+          await db.insert(organizationMemberships).values({ organizationId: orgId, userId, role: safeRole, status: "active" });
+        }
+      } else {
+        const pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2)}_${cleanEmail.replace(/[^a-z0-9]/g, "_")}`;
+        const [newUser] = await db.insert(usersTable).values({
+          id: pendingId,
+          name: (u.name?.trim() || cleanEmail.split("@")[0]),
+          email: cleanEmail,
+          role: safeRole === "learner" ? "learner" : "admin",
+          organizationId: orgId,
+          authProvider: "pending",
+          isActive: true,
+        }).returning();
+        userId = newUser.userId;
+        status = "created";
+        await db.insert(organizationMemberships).values({ organizationId: orgId, userId, role: safeRole, status: "active" });
+      }
+
+      return { email: cleanEmail, name: u.name ?? "", status };
+    })
+  );
+
+  const rows = results.map((r, i) =>
+    r.status === "fulfilled"
+      ? r.value
+      : { email: users[i].email, name: users[i].name ?? "", status: "error" as const, error: (r.reason as Error)?.message ?? "Unknown" }
+  );
+
+  const created  = rows.filter(r => r.status === "created").length;
+  const existing = rows.filter(r => r.status === "existing").length;
+  const errors   = rows.filter(r => r.status === "error").length;
+
+  invalidateStatsCache();
+  await logEvent({
+    level: errors === rows.length ? "error" : errors > 0 ? "warn" : "info",
+    category: "org_management",
+    message: `Owner bulk import to org #${orgId}: ${created} created, ${existing} existing, ${errors} failed`,
+    metadata: { orgId, total: rows.length, created, existing, errors },
+    orgId,
+  });
+
+  res.json({ results: rows, created, existing, errors });
 });
 
 // ── GET /api/owner/activity ────────────────────────────────────────────────

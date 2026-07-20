@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 
@@ -7,8 +7,31 @@ import { OwnerLayout } from "./OwnerLayout";
 import {
   Building2, Plus, Users, BookOpen, ClipboardCheck, Trash2, Pencil,
   X, Check, ChevronRight, RefreshCw, Eye, GraduationCap, ShieldCheck,
-  AlertCircle, ScrollText,
+  AlertCircle, ScrollText, Upload, FileText, CheckCircle2,
 } from "lucide-react";
+
+/* ── CSV helpers (shared with AccountsPage) ─────────────────── */
+const VALID_ROLES_OWNER = ["learner", "manager", "admin", "owner"] as const;
+type OrgRole = typeof VALID_ROLES_OWNER[number];
+
+function parseOrgCSV(text: string): { name: string; email: string; role: OrgRole }[] {
+  const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+  if (lines.length === 0) return [];
+  const firstLower = lines[0].toLowerCase();
+  const hasHeader = firstLower.includes("name") || firstLower.includes("email");
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+  return dataLines.map(line => {
+    const cols = line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+    const email = (cols[1] ?? cols[0] ?? "").toLowerCase().trim();
+    const name  = cols[1] ? (cols[0] ?? "").trim() : "";
+    const roleRaw = (cols[2] ?? "").toLowerCase().trim() as OrgRole;
+    const role  = VALID_ROLES_OWNER.includes(roleRaw) ? roleRaw : "learner";
+    return { name: name || email.split("@")[0], email, role };
+  }).filter(r => r.email.includes("@"));
+}
+
+interface BulkImportRow { name: string; email: string; role: OrgRole }
+interface BulkImportResult { email: string; name: string; status: "created" | "existing" | "error"; error?: string }
 
 interface Org {
   organization_id: number;
@@ -108,6 +131,54 @@ function OrgDetailPanel({ orgId, orgName, onClose }: { orgId: number; orgName: s
   const { startImpersonation } = useImpersonation();
   const [, navigate] = useLocation();
 
+  // ── Bulk import state ──────────────────────────────────────────
+  const [showBulk,    setShowBulk]    = useState(false);
+  const [bulkRows,    setBulkRows]    = useState<BulkImportRow[]>([]);
+  const [bulkFile,    setBulkFile]    = useState("");
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResults, setBulkResults] = useState<BulkImportResult[] | null>(null);
+  const [bulkError,   setBulkError]   = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBulkFile = (file: File) => {
+    setBulkFile(file.name);
+    setBulkResults(null);
+    setBulkError("");
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const rows = parseOrgCSV(ev.target?.result as string ?? "");
+      if (rows.length === 0) { setBulkError("No valid rows found. Expected columns: name, email, role"); return; }
+      setBulkRows(rows);
+    };
+    reader.readAsText(file);
+  };
+
+  const submitBulk = async () => {
+    if (bulkRows.length === 0) return;
+    setBulkLoading(true);
+    setBulkError("");
+    try {
+      const r = await fetch(`${basePath}/api/owner/users/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ orgId, users: bulkRows }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? "Import failed");
+      setBulkResults(data.results);
+      // Refresh detail to show new members
+      fetch(`${basePath}/api/owner/orgs/${orgId}`, { credentials: "include" })
+        .then(resp => resp.ok ? resp.json() : null).then(d => d && setDetail(d));
+    } catch (e: any) {
+      setBulkError(e.message);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const resetBulk = () => { setBulkRows([]); setBulkFile(""); setBulkResults(null); setBulkError(""); };
+
   useEffect(() => {
     fetch(`${basePath}/api/owner/orgs/${orgId}`, { credentials: "include" })
       .then(r => r.ok ? r.json() : null).then(d => d && setDetail(d));
@@ -150,7 +221,14 @@ function OrgDetailPanel({ orgId, orgName, onClose }: { orgId: number; orgName: s
               <GraduationCap className="w-3.5 h-3.5" />
               Learner
             </button>
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={() => { setShowBulk(v => !v); resetBulk(); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${showBulk ? "bg-violet-600/30 border-violet-500/40 text-violet-300" : "bg-white/5 hover:bg-white/10 border-white/10 text-gray-300"}`}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Import Users
+              </button>
               <button
                 onClick={viewLogs}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-xs font-medium transition-colors"
@@ -168,6 +246,105 @@ function OrgDetailPanel({ orgId, orgName, onClose }: { orgId: number; orgName: s
           </div>
         ) : (
           <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
+
+            {/* ── Bulk Import Section ── */}
+            {showBulk && (
+              <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold text-violet-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Upload className="w-3.5 h-3.5" /> Bulk Import Users
+                  </h3>
+                  <button onClick={() => { setShowBulk(false); resetBulk(); }} className="text-gray-500 hover:text-white">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {bulkResults ? (
+                  /* Results */
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      {[
+                        { label: "Created",  val: bulkResults.filter(r => r.status === "created").length,  cls: "text-emerald-400 border-emerald-500/20 bg-emerald-500/10" },
+                        { label: "Existing", val: bulkResults.filter(r => r.status === "existing").length, cls: "text-blue-400 border-blue-500/20 bg-blue-500/10" },
+                        { label: "Errors",   val: bulkResults.filter(r => r.status === "error").length,    cls: "text-red-400 border-red-500/20 bg-red-500/10" },
+                      ].map(s => (
+                        <div key={s.label} className={`rounded-lg border py-2 ${s.cls}`}>
+                          <p className="text-xl font-bold">{s.val}</p>
+                          <p className="text-[10px] mt-0.5">{s.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="max-h-40 overflow-y-auto space-y-1">
+                      {bulkResults.map((r, i) => (
+                        <div key={i} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs ${r.status === "created" ? "bg-emerald-500/8 text-emerald-300" : r.status === "existing" ? "bg-blue-500/8 text-blue-300" : "bg-red-500/8 text-red-300"}`}>
+                          {r.status === "error"
+                            ? <AlertCircle className="w-3 h-3 shrink-0" />
+                            : <CheckCircle2 className="w-3 h-3 shrink-0" />}
+                          <span className="flex-1 truncate">{r.name ? `${r.name} · ` : ""}{r.email}</span>
+                          <span className="opacity-60 capitalize">{r.status === "existing" ? "already in org" : r.status}{r.error ? `: ${r.error}` : ""}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={resetBulk} className="text-xs text-violet-400 hover:text-violet-300">
+                      Import another file →
+                    </button>
+                  </div>
+                ) : bulkRows.length === 0 ? (
+                  /* Drop zone */
+                  <div>
+                    <div
+                      className="border border-dashed border-white/15 rounded-lg p-6 text-center cursor-pointer hover:border-violet-500/40 hover:bg-violet-500/5 transition-colors"
+                      onClick={() => fileInputRef.current?.click()}
+                      onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleBulkFile(f); }}
+                      onDragOver={e => e.preventDefault()}
+                    >
+                      <FileText className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+                      <p className="text-sm text-gray-300">Drop a CSV or click to browse</p>
+                      <p className="text-[10px] text-gray-600 mt-1">Columns: <code className="bg-white/5 px-1 rounded">name, email, role</code> · Max 500 rows</p>
+                    </div>
+                    <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleBulkFile(f); }} />
+                    {bulkError && <p className="mt-2 text-xs text-red-400">{bulkError}</p>}
+                  </div>
+                ) : (
+                  /* Preview */
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-xs text-gray-400">
+                      <FileText className="w-3.5 h-3.5 text-violet-400" />
+                      <span className="truncate max-w-[160px]">{bulkFile}</span>
+                      <span>·</span><span>{bulkRows.length} user{bulkRows.length !== 1 ? "s" : ""}</span>
+                      <button onClick={resetBulk} className="ml-auto text-gray-600 hover:text-red-400 transition-colors">Clear</button>
+                    </div>
+                    <div className="max-h-44 overflow-y-auto rounded-lg border border-white/8 divide-y divide-white/5">
+                      {bulkRows.slice(0, 50).map((row, i) => (
+                        <div key={i} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/3">
+                          <span className="flex-1 text-white truncate">{row.name}</span>
+                          <span className="text-gray-500 truncate max-w-[140px]">{row.email}</span>
+                          <select value={row.role}
+                            onChange={e => setBulkRows(prev => prev.map((r, idx) => idx === i ? { ...r, role: e.target.value as OrgRole } : r))}
+                            className="h-5 rounded border border-white/10 bg-white/5 px-1 text-[10px] text-gray-300 focus:outline-none">
+                            {VALID_ROLES_OWNER.map(r => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                          <button onClick={() => setBulkRows(prev => prev.filter((_, idx) => idx !== i))} className="text-gray-600 hover:text-red-400">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                      {bulkRows.length > 50 && <div className="px-3 py-2 text-[10px] text-gray-500 text-center">+ {bulkRows.length - 50} more rows</div>}
+                    </div>
+                    {bulkError && <p className="text-xs text-red-400">{bulkError}</p>}
+                    <div className="flex gap-2">
+                      <button onClick={submitBulk} disabled={bulkLoading}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-medium transition-colors">
+                        {bulkLoading ? <><RefreshCw className="w-3 h-3 animate-spin" /> Importing…</> : <><Upload className="w-3 h-3" /> Import {bulkRows.length} user{bulkRows.length !== 1 ? "s" : ""}</>}
+                      </button>
+                      <button onClick={resetBulk} className="px-3 py-2 rounded-lg text-xs text-gray-400 hover:text-white transition-colors">Clear</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Members */}
             <div>
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Members ({detail.members.length})</h3>
