@@ -1,18 +1,15 @@
-import {
-  useState, useEffect, useRef, useCallback, useMemo
-} from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   X, Sparkles, Send, Loader2, Wand2, ChevronDown,
   CheckCircle2, AlertCircle, MessageSquare, Zap, User,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Shared types
+// Types
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Question {
@@ -31,122 +28,19 @@ interface AiPlanningPanelProps {
   onGenerated: (module: GeneratedModule) => void;
   onClose: () => void;
 }
-type Mode = "quick" | "conversation";
 interface ChatMessage { role: "user" | "assistant"; content: string; }
+type Mode = "quick" | "conversation";
+type ConvPhase =
+  | "booting" | "listening" | "user-speaking"
+  | "transcribing" | "ai-thinking" | "ai-speaking" | "done";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VAD constants
+// VAD config
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SPEECH_THRESHOLD = 18;   // RMS out of 255 — above = speech detected
-const SILENCE_AFTER_MS = 1400; // ms of quiet after speech → auto-send
-const MIN_SPEECH_MS    = 350;  // must have spoken for at least this long
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Waveform visualiser
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Animated bars driven by real analyser data (user) or CSS keyframes (AI). */
-function WaveformBars({
-  mode,
-  analyserRef,
-}: {
-  mode: "user" | "ai" | "idle";
-  analyserRef?: React.RefObject<AnalyserNode | null>;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rafRef    = useRef<number>(0);
-  const BAR_COUNT = 28;
-
-  useEffect(() => {
-    if (mode !== "user" || !analyserRef?.current || !canvasRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      return;
-    }
-    const analyser = analyserRef.current;
-    const canvas   = canvasRef.current;
-    const ctx      = canvas.getContext("2d")!;
-    const data     = new Uint8Array(analyser.frequencyBinCount);
-
-    const draw = () => {
-      rafRef.current = requestAnimationFrame(draw);
-      analyser.getByteFrequencyData(data);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const step = Math.floor(data.length / BAR_COUNT);
-      const barW = canvas.width / BAR_COUNT - 2;
-      for (let i = 0; i < BAR_COUNT; i++) {
-        const val    = data[i * step] / 255;
-        const height = Math.max(4, val * canvas.height);
-        const y      = (canvas.height - height) / 2;
-        ctx.fillStyle = `rgba(99,102,241,${0.4 + val * 0.6})`; // indigo
-        ctx.beginPath();
-        ctx.roundRect(i * (barW + 2), y, barW, height, 3);
-        ctx.fill();
-      }
-    };
-    draw();
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [mode, analyserRef]);
-
-  if (mode === "user") {
-    return (
-      <canvas
-        ref={canvasRef}
-        width={240}
-        height={56}
-        className="w-60 h-14"
-      />
-    );
-  }
-
-  // AI speaking — CSS animated bars
-  const bars = Array.from({ length: BAR_COUNT }, (_, i) => i);
-  return (
-    <div className="flex items-center gap-[3px] h-14 w-60">
-      {bars.map(i => (
-        <div
-          key={i}
-          className="flex-1 rounded-sm bg-violet-400"
-          style={{
-            animation: `nova-wave 0.9s ease-in-out ${(i % 7) * 0.12}s infinite alternate`,
-            minHeight: 4,
-          }}
-        />
-      ))}
-      <style>{`
-        @keyframes nova-wave {
-          from { height: 6px;  opacity: 0.35; }
-          to   { height: 48px; opacity: 0.9; }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Nova avatar
-// ─────────────────────────────────────────────────────────────────────────────
-
-function NovaAvatar({ speaking }: { speaking: boolean }) {
-  return (
-    <div className="relative flex items-center justify-center">
-      {speaking && (
-        <>
-          <span className="absolute inset-0 rounded-full bg-violet-500/20 animate-ping" />
-          <span className="absolute inset-[-6px] rounded-full border border-violet-500/30 animate-pulse" />
-        </>
-      )}
-      <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl select-none shadow-lg transition-all duration-300 ${
-        speaking
-          ? "bg-gradient-to-br from-violet-500 to-indigo-600 shadow-violet-500/40"
-          : "bg-gradient-to-br from-violet-700 to-indigo-800"
-      }`}>
-        🎓
-      </div>
-    </div>
-  );
-}
+const SPEECH_THRESHOLD = 12;   // avg freq energy (0-255) above = speech
+const SILENCE_AFTER_MS = 1500; // ms of quiet after speech → stop
+const MIN_SPEECH_MS    = 400;  // discard clips shorter than this
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TTS helper
@@ -157,13 +51,13 @@ async function speakText(text: string): Promise<void> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ text: text.slice(0, 800) }), // keep TTS snappy
+    body: JSON.stringify({ text: text.slice(0, 800) }),
   });
   if (!res.ok) return;
   const blob = await res.blob();
   const url  = URL.createObjectURL(blob);
   return new Promise<void>(resolve => {
-    const audio  = new Audio(url);
+    const audio = new Audio(url);
     audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
     audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
     audio.play().catch(() => resolve());
@@ -171,17 +65,120 @@ async function speakText(text: string): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Conversation mode
+// Nova avatar — pulses while speaking
 // ─────────────────────────────────────────────────────────────────────────────
 
-type ConvPhase =
-  | "booting"        // fetching first AI message
-  | "listening"      // mic open, VAD watching — no speech yet
-  | "user-speaking"  // VAD detected speech, recording in progress
-  | "transcribing"   // silence detected, sending to Deepgram STT
-  | "ai-thinking"    // waiting for plan-chat response
-  | "ai-speaking"    // TTS playing
-  | "done";          // module generated
+function NovaAvatar({ speaking }: { speaking: boolean }) {
+  return (
+    <div className="relative flex items-center justify-center w-20 h-20">
+      {speaking && (
+        <>
+          <span className="absolute inset-0 rounded-full bg-violet-500/25 animate-ping" />
+          <span className="absolute inset-[-8px] rounded-full border-2 border-violet-400/30 animate-pulse" />
+        </>
+      )}
+      <div className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl select-none shadow-xl transition-all duration-300 ${
+        speaking
+          ? "bg-gradient-to-br from-violet-500 to-indigo-600 shadow-violet-500/50 scale-105"
+          : "bg-gradient-to-br from-violet-700 to-indigo-800"
+      }`}>
+        🎓
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// User speaking indicator — shown when VAD detects voice
+// ─────────────────────────────────────────────────────────────────────────────
+
+function UserSpeakingRing({ analyserRef, active }: {
+  analyserRef: React.RefObject<AnalyserNode | null>;
+  active: boolean;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef    = useRef<number>(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d")!;
+
+    if (!active || !analyserRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
+    const analyser = analyserRef.current;
+    const data     = new Uint8Array(analyser.frequencyBinCount);
+    const W = canvas.width;
+    const H = canvas.height;
+    const BAR_COUNT = 40;
+
+    const draw = () => {
+      rafRef.current = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(data);
+      ctx.clearRect(0, 0, W, H);
+
+      const step = Math.floor(data.length / BAR_COUNT);
+      const barW = W / BAR_COUNT - 1.5;
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const val    = data[i * step] / 255;
+        const h      = Math.max(3, val * H * 0.95);
+        const y      = (H - h) / 2;
+        // gradient from indigo to violet based on intensity
+        const alpha  = 0.5 + val * 0.5;
+        ctx.fillStyle = `rgba(129,140,248,${alpha})`;
+        ctx.beginPath();
+        ctx.roundRect(i * (barW + 1.5), y, barW, h, 2);
+        ctx.fill();
+      }
+    };
+    draw();
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [active, analyserRef]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={300}
+      height={64}
+      className="w-full max-w-[300px] h-16"
+    />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI speaking — CSS wave bars
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AiSpeakingWave() {
+  return (
+    <div className="flex items-center justify-center gap-[3px] h-16 w-full max-w-[300px]">
+      {Array.from({ length: 40 }).map((_, i) => (
+        <div
+          key={i}
+          className="flex-1 rounded-sm bg-violet-400"
+          style={{
+            animation: `nova-bar 0.8s ease-in-out ${(i % 8) * 0.1}s infinite alternate`,
+            minHeight: 3,
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes nova-bar {
+          from { height: 4px;  opacity: 0.3; }
+          to   { height: 52px; opacity: 1.0; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Conversation mode
+// ─────────────────────────────────────────────────────────────────────────────
 
 function ConversationMode({ onGenerated }: { onGenerated: (m: GeneratedModule) => void }) {
   const [messages,  setMessages]  = useState<ChatMessage[]>([]);
@@ -189,35 +186,44 @@ function ConversationMode({ onGenerated }: { onGenerated: (m: GeneratedModule) =
   const [input,     setInput]     = useState("");
   const [chatError, setChatError] = useState<string | null>(null);
 
-  const scrollRef   = useRef<HTMLDivElement>(null);
-  const inputRef    = useRef<HTMLTextAreaElement>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-
-  // VAD internals (all in refs — no re-renders needed)
+  // Refs — never go stale in closures
+  const messagesRef    = useRef<ChatMessage[]>([]);   // always current messages
+  const phaseRef       = useRef<ConvPhase>("booting");
+  const analyserRef    = useRef<AnalyserNode | null>(null);
   const streamRef      = useRef<MediaStream | null>(null);
   const recorderRef    = useRef<MediaRecorder | null>(null);
   const chunksRef      = useRef<Blob[]>([]);
   const audioCtxRef    = useRef<AudioContext | null>(null);
   const rafRef         = useRef<number>(0);
-  const lastSpeechRef  = useRef<number>(0);
   const speechStartRef = useRef<number>(0);
-  const isSpeakingRef  = useRef(false); // VAD "is user currently speaking?"
-  const phaseRef       = useRef<ConvPhase>("booting"); // mirror for RAF loop
+  const lastSpeechRef  = useRef<number>(0);
+  const isSpeakingRef  = useRef(false);
+  const scrollRef      = useRef<HTMLDivElement>(null);
+  const inputRef       = useRef<HTMLTextAreaElement>(null);
 
-  // Keep phaseRef in sync
-  useEffect(() => { phaseRef.current = phase; }, [phase]);
+  // Keep refs in sync with state
+  const setMessagesSync = (msgs: ChatMessage[]) => {
+    messagesRef.current = msgs;
+    setMessages(msgs);
+  };
+  const setPhaseSync = (p: ConvPhase) => {
+    phaseRef.current = p;
+    setPhase(p);
+  };
 
   const scrollToBottom = () =>
     requestAnimationFrame(() =>
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
     );
 
-  // ── Tear down mic / VAD ──────────────────────────────────────────────────
+  // ── Teardown ───────────────────────────────────────────────────────────────
+
+  const stopVADLoop = () => cancelAnimationFrame(rafRef.current);
 
   const teardownMic = useCallback(() => {
-    cancelAnimationFrame(rafRef.current);
-    if (recorderRef.current && recorderRef.current.state !== "inactive") {
-      try { recorderRef.current.stop(); } catch {}
+    stopVADLoop();
+    if (recorderRef.current?.state !== "inactive") {
+      try { recorderRef.current!.stop(); } catch {}
     }
     streamRef.current?.getTracks().forEach(t => t.stop());
     audioCtxRef.current?.close().catch(() => {});
@@ -229,130 +235,112 @@ function ConversationMode({ onGenerated }: { onGenerated: (m: GeneratedModule) =
     chunksRef.current = [];
   }, []);
 
-  // ── Send a user message to plan-chat ─────────────────────────────────────
+  // ── Core chat call ─────────────────────────────────────────────────────────
 
-  const sendToAI = useCallback(async (userText: string, currentMessages: ChatMessage[]) => {
-    const userMsg: ChatMessage = { role: "user", content: userText };
-    const history = [...currentMessages, userMsg];
-    setMessages(history);
-    setInput("");
-    scrollToBottom();
-    setPhase("ai-thinking");
-    setChatError(null);
+  const callPlanChat = async (history: ChatMessage[]): Promise<{ message: string; done: boolean; module?: GeneratedModule }> => {
+    const res = await fetch(`${basePath}/api/modules/plan-chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ messages: history }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Chat failed");
+    return res.json();
+  };
 
-    try {
-      const res = await fetch(`${basePath}/api/modules/plan-chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ messages: history }),
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Chat failed");
-      const data = await res.json();
+  // ── Restart VAD loop after recorder is in "inactive" state ────────────────
 
-      const aiMsg: ChatMessage = { role: "assistant", content: data.message };
-      const next = [...history, aiMsg];
-      setMessages(next);
-      scrollToBottom();
+  const restartVADLoop = useCallback(() => {
+    const recorder = recorderRef.current;
+    const analyser = analyserRef.current;
+    if (!recorder || !analyser) return;
 
-      if (data.done && data.module) {
-        setPhase("ai-speaking");
-        await speakText(data.message);
-        setPhase("done");
-        setTimeout(() => onGenerated(data.module), 600);
-        return;
-      }
+    isSpeakingRef.current = false;
+    chunksRef.current     = [];
 
-      // Speak Nova's reply, then re-open mic
-      setPhase("ai-speaking");
-      await speakText(data.message);
-      setPhase("listening");
-    } catch (err: any) {
-      setChatError(err.message ?? "Something went wrong");
-      setPhase("listening");
-    }
-  }, [onGenerated]); // eslint-disable-line
+    // Recorder must be inactive before we can start again
+    if (recorder.state !== "inactive") return;
 
-  // ── VAD loop ──────────────────────────────────────────────────────────────
+    setPhaseSync("listening");
 
-  const startVAD = useCallback((msgs: ChatMessage[]) => {
-    if (!analyserRef.current || !recorderRef.current) return;
-    const analyser  = analyserRef.current;
-    const recorder  = recorderRef.current;
-    const data      = new Uint8Array(analyser.frequencyBinCount);
+    const data = new Uint8Array(analyser.frequencyBinCount);
 
     const loop = () => {
       const p = phaseRef.current;
-      if (p !== "listening" && p !== "user-speaking") return; // stopped
+      if (p !== "listening" && p !== "user-speaking") return; // phase changed externally — stop
 
       analyser.getByteFrequencyData(data);
-      const rms = data.reduce((s, v) => s + v, 0) / data.length;
+      const avg = data.reduce((s, v) => s + v, 0) / data.length;
 
-      if (rms > SPEECH_THRESHOLD) {
+      if (avg > SPEECH_THRESHOLD) {
         lastSpeechRef.current = Date.now();
+
         if (!isSpeakingRef.current) {
-          isSpeakingRef.current = true;
+          // Speech just started
+          isSpeakingRef.current  = true;
           speechStartRef.current = Date.now();
+          chunksRef.current      = [];
           if (recorder.state === "inactive") {
-            chunksRef.current = [];
-            recorder.start(100);
+            recorder.ondataavailable = e => {
+              if (e.data.size > 0) chunksRef.current.push(e.data);
+            };
+            try { recorder.start(80); } catch {}
           }
-          setPhase("user-speaking");
+          setPhaseSync("user-speaking");
         }
       } else if (isSpeakingRef.current) {
-        const silent = Date.now() - lastSpeechRef.current;
-        if (silent >= SILENCE_AFTER_MS) {
-          // Enough silence — stop and transcribe
+        const silentMs = Date.now() - lastSpeechRef.current;
+        if (silentMs >= SILENCE_AFTER_MS) {
+          // Silence long enough — finalize
           isSpeakingRef.current = false;
+          stopVADLoop();
           const spokenMs = Date.now() - speechStartRef.current;
-          cancelAnimationFrame(rafRef.current);
 
           if (spokenMs < MIN_SPEECH_MS) {
-            // Too short — probably a sound artefact, reset
-            try { recorder.stop(); } catch {}
-            chunksRef.current = [];
-            setTimeout(() => {
-              if (recorderRef.current) {
-                try {
-                  chunksRef.current = [];
-                  recorderRef.current.start(100);
-                } catch {}
-              }
-              isSpeakingRef.current = false;
-              setPhase("listening");
-              rafRef.current = requestAnimationFrame(loop);
-            }, 200);
+            // Too short — noise, reset
+            if (recorder.state !== "inactive") {
+              recorder.onstop = () => {
+                chunksRef.current = [];
+                setTimeout(() => restartVADLoop(), 100);
+              };
+              try { recorder.stop(); } catch { setTimeout(() => restartVADLoop(), 100); }
+            } else {
+              setTimeout(() => restartVADLoop(), 100);
+            }
             return;
           }
 
-          // Real speech — transcribe
-          setPhase("transcribing");
-          recorder.onstop = async () => {
-            const mimeType = recorder.mimeType || "audio/webm";
-            const blob = new Blob(chunksRef.current, { type: mimeType });
-            chunksRef.current = [];
-            if (blob.size < 200) { setPhase("listening"); startVAD(msgs); return; }
+          // Real speech — stop recorder, collect blob, transcribe
+          setPhaseSync("transcribing");
+          if (recorder.state !== "inactive") {
+            recorder.onstop = async () => {
+              const mimeType = recorder.mimeType || "audio/webm";
+              const blob     = new Blob(chunksRef.current, { type: mimeType });
+              chunksRef.current = [];
 
-            try {
-              const r = await fetch(`${basePath}/api/deepgram/transcribe`, {
-                method: "POST",
-                headers: { "Content-Type": mimeType },
-                credentials: "include",
-                body: blob,
-              });
-              const { transcript } = await r.json();
-              if (transcript?.trim()) {
-                await sendToAI(transcript.trim(), msgs);
-              } else {
-                setPhase("listening");
-                startVAD(msgs);
+              if (blob.size < 200) { restartVADLoop(); return; }
+
+              try {
+                const r = await fetch(`${basePath}/api/deepgram/transcribe`, {
+                  method: "POST",
+                  headers: { "Content-Type": mimeType },
+                  credentials: "include",
+                  body: blob,
+                });
+                const { transcript } = await r.json();
+                if (transcript?.trim()) {
+                  await handleUserTurn(transcript.trim());
+                } else {
+                  restartVADLoop();
+                }
+              } catch {
+                restartVADLoop();
               }
-            } catch {
-              setPhase("listening");
-              startVAD(msgs);
-            }
-          };
-          try { recorder.stop(); } catch {}
+            };
+            try { recorder.stop(); } catch { restartVADLoop(); }
+          } else {
+            restartVADLoop();
+          }
           return;
         }
       }
@@ -361,62 +349,86 @@ function ConversationMode({ onGenerated }: { onGenerated: (m: GeneratedModule) =
     };
 
     rafRef.current = requestAnimationFrame(loop);
-  }, [sendToAI]); // eslint-disable-line
+  }, []); // eslint-disable-line
 
-  // ── Open mic & start VAD ──────────────────────────────────────────────────
+  // ── Handle a complete user utterance ──────────────────────────────────────
 
-  const openMic = useCallback(async (msgs: ChatMessage[]) => {
+  const handleUserTurn = useCallback(async (text: string) => {
+    const userMsg: ChatMessage = { role: "user", content: text };
+    const history = [...messagesRef.current, userMsg];
+    setMessagesSync(history);
+    setInput("");
+    scrollToBottom();
+    setPhaseSync("ai-thinking");
+    setChatError(null);
+
     try {
-      if (streamRef.current) teardownMic();
+      const data = await callPlanChat(history);
+      const aiMsg: ChatMessage = { role: "assistant", content: data.message };
+      const next = [...history, aiMsg];
+      setMessagesSync(next);
+      scrollToBottom();
 
+      if (data.done && data.module) {
+        setPhaseSync("ai-speaking");
+        await speakText(data.message);
+        setPhaseSync("done");
+        setTimeout(() => onGenerated(data.module!), 600);
+        return;
+      }
+
+      setPhaseSync("ai-speaking");
+      await speakText(data.message);
+
+      // ← FIX: restart VAD loop here, using current messagesRef (not a stale snapshot)
+      restartVADLoop();
+    } catch (err: any) {
+      setChatError(err.message ?? "Something went wrong");
+      restartVADLoop();
+    }
+  }, [onGenerated, restartVADLoop]); // eslint-disable-line
+
+  // ── Open mic for the first time ───────────────────────────────────────────
+
+  const openMic = useCallback(async () => {
+    try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
       const ctx      = new AudioContext();
       const source   = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
+      analyser.fftSize = 512; // higher res for better VAD
       source.connect(analyser);
       audioCtxRef.current = ctx;
       analyserRef.current = analyser;
 
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-      const recorder = new MediaRecorder(stream, { mimeType });
-      recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      recorderRef.current = recorder;
+        ? "audio/webm;codecs=opus" : "audio/webm";
+      recorderRef.current = new MediaRecorder(stream, { mimeType });
 
-      isSpeakingRef.current = false;
-      setPhase("listening");
-      startVAD(msgs);
+      restartVADLoop();
     } catch {
-      setChatError("Microphone access denied. Type your response below.");
-      setPhase("listening");
+      setChatError("Microphone access denied — type your response below.");
+      setPhaseSync("listening");
     }
-  }, [teardownMic, startVAD]);
+  }, [restartVADLoop]);
 
-  // ── Boot: fetch first message ─────────────────────────────────────────────
+  // ── Boot ──────────────────────────────────────────────────────────────────
 
   const boot = useCallback(async () => {
-    setPhase("ai-thinking");
+    setPhaseSync("ai-thinking");
     try {
-      const res = await fetch(`${basePath}/api/modules/plan-chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ messages: [] }),
-      });
-      const data = await res.json();
+      const data = await callPlanChat([]);
       const aiMsg: ChatMessage = { role: "assistant", content: data.message };
-      setMessages([aiMsg]);
+      setMessagesSync([aiMsg]);
       scrollToBottom();
-      setPhase("ai-speaking");
+      setPhaseSync("ai-speaking");
       await speakText(data.message);
-      await openMic([aiMsg]);
+      await openMic();
     } catch (err: any) {
-      setChatError(err.message ?? "Failed to start");
-      setPhase("listening");
+      setChatError(err.message ?? "Failed to start — type below to continue.");
+      setPhaseSync("listening");
     }
   }, [openMic]); // eslint-disable-line
 
@@ -425,47 +437,43 @@ function ConversationMode({ onGenerated }: { onGenerated: (m: GeneratedModule) =
     return () => teardownMic();
   }, []); // eslint-disable-line
 
-  // After AI finishes speaking & phase returns to "listening", re-open mic on
-  // subsequent turns (already handled in sendToAI → openMic chain above)
   useEffect(() => { scrollToBottom(); }, [messages]);
 
   // ── Manual text send ──────────────────────────────────────────────────────
 
   const handleTextSend = useCallback(() => {
     const trimmed = input.trim();
-    if (!trimmed || phase === "ai-thinking" || phase === "ai-speaking" || phase === "done") return;
-    teardownMic();
-    sendToAI(trimmed, messages).then(() => {
-      // re-open mic after AI replies (sendToAI sets phase to "listening")
-    });
-  }, [input, phase, messages, teardownMic, sendToAI]);
+    if (!trimmed || phaseRef.current === "ai-thinking" || phaseRef.current === "ai-speaking" || phaseRef.current === "done") return;
+    stopVADLoop();
+    handleUserTurn(trimmed);
+  }, [input, handleUserTurn]);
 
-  // ── Phase label ──────────────────────────────────────────────────────────
+  // ── Derived display ───────────────────────────────────────────────────────
 
-  const phaseLabel = useMemo(() => {
+  const isAiTurn      = phase === "ai-thinking" || phase === "ai-speaking" || phase === "booting";
+  const isUserSpeaking = phase === "user-speaking";
+
+  const phaseLabel = (() => {
     switch (phase) {
-      case "booting":      return "Nova is warming up…";
-      case "listening":    return "Listening… speak when ready";
-      case "user-speaking":return "I'm hearing you…";
-      case "transcribing": return "Got it, processing…";
-      case "ai-thinking":  return "Nova is thinking…";
-      case "ai-speaking":  return "Nova is speaking…";
-      case "done":         return "Building your module…";
+      case "booting":       return "Nova is warming up…";
+      case "listening":     return "Listening — speak when ready";
+      case "user-speaking": return "I hear you, keep going…";
+      case "transcribing":  return "Got it, processing…";
+      case "ai-thinking":   return "Nova is thinking…";
+      case "ai-speaking":   return "Nova is speaking…";
+      case "done":          return "Building your module…";
     }
-  }, [phase]);
-
-  const isAiTurn  = phase === "ai-thinking" || phase === "ai-speaking" || phase === "booting";
-  const isUserTurn = phase === "listening" || phase === "user-speaking";
-
-  const waveMode: "user" | "ai" | "idle" =
-    phase === "user-speaking" ? "user" :
-    phase === "ai-speaking"   ? "ai"   : "idle";
+  })();
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
 
-      {/* ── Nova hero area ── */}
-      <div className="flex flex-col items-center gap-3 pt-6 pb-4 px-5 border-b border-border/50 shrink-0 bg-gradient-to-b from-violet-950/20 to-transparent">
+      {/* ── Nova hero ── */}
+      <div className={`flex flex-col items-center gap-3 pt-5 pb-4 px-5 border-b shrink-0 transition-colors duration-500 ${
+        isUserSpeaking
+          ? "border-indigo-500/40 bg-indigo-950/30"
+          : "border-border/50 bg-gradient-to-b from-violet-950/20 to-transparent"
+      }`}>
         <NovaAvatar speaking={phase === "ai-speaking"} />
 
         <div className="text-center">
@@ -473,43 +481,52 @@ function ConversationMode({ onGenerated }: { onGenerated: (m: GeneratedModule) =
           <p className="text-xs text-muted-foreground">AI Training Consultant</p>
         </div>
 
-        {/* Waveform */}
-        <div className="h-14 flex items-center justify-center">
-          {waveMode !== "idle"
-            ? <WaveformBars mode={waveMode} analyserRef={analyserRef} />
-            : (
-              <div className="flex items-center gap-[3px] h-14 w-60">
-                {Array.from({ length: 28 }).map((_, i) => (
-                  <div key={i} className="flex-1 rounded-sm bg-border" style={{ height: 6 }} />
-                ))}
-              </div>
-            )
+        {/* Waveform area */}
+        <div className="w-full flex justify-center h-16 items-center">
+          {phase === "ai-speaking"
+            ? <AiSpeakingWave />
+            : <UserSpeakingRing analyserRef={analyserRef} active={isUserSpeaking} />
           }
         </div>
 
-        {/* Phase label */}
-        <div className={`flex items-center gap-2 text-xs font-medium transition-colors ${
-          isAiTurn   ? "text-violet-400" :
-          phase === "user-speaking" ? "text-indigo-400" :
-          isUserTurn ? "text-muted-foreground" : "text-emerald-400"
-        }`}>
-          {(phase === "ai-thinking" || phase === "transcribing" || phase === "booting") && (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          )}
-          {phase === "user-speaking" && (
-            <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-          )}
-          {phaseLabel}
-        </div>
+        {/* ── Prominent user-speaking state ── */}
+        {isUserSpeaking && (
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/20 border border-indigo-500/40">
+            <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 animate-pulse" />
+            <span className="text-sm font-semibold text-indigo-300 tracking-wide">Speaking…</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: "300ms" }} />
+          </div>
+        )}
+
+        {/* Phase label (not shown when user is speaking — pill covers it) */}
+        {!isUserSpeaking && (
+          <div className={`flex items-center gap-2 text-xs font-medium transition-colors ${
+            isAiTurn           ? "text-violet-400" :
+            phase === "done"   ? "text-emerald-400" :
+            phase === "transcribing" ? "text-primary" :
+            "text-muted-foreground"
+          }`}>
+            {(phase === "ai-thinking" || phase === "transcribing" || phase === "booting") && (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            )}
+            {phase === "listening" && (
+              <span className="relative flex w-2 h-2">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+                <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-500" />
+              </span>
+            )}
+            {phaseLabel}
+          </div>
+        )}
       </div>
 
       {/* ── Transcript ── */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
         {messages.map((msg, i) => (
           <div key={i} className={`flex gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
-            <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-xs ${
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
               msg.role === "assistant"
-                ? "bg-gradient-to-br from-violet-600 to-indigo-700 text-white"
+                ? "bg-gradient-to-br from-violet-600 to-indigo-700 text-white text-xs"
                 : "bg-muted border border-border"
             }`}>
               {msg.role === "assistant" ? "🎓" : <User className="w-3 h-3 text-muted-foreground" />}
@@ -527,16 +544,16 @@ function ConversationMode({ onGenerated }: { onGenerated: (m: GeneratedModule) =
         {phase === "ai-thinking" && messages.length > 0 && (
           <div className="flex gap-2.5">
             <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-600 to-indigo-700 flex items-center justify-center text-xs shrink-0">🎓</div>
-            <div className="bg-violet-500/10 border border-violet-500/20 rounded-2xl rounded-tl-sm px-3.5 py-3 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+            <div className="bg-violet-500/10 border border-violet-500/20 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5">
+              {[0, 150, 300].map(d => (
+                <span key={d} className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+              ))}
             </div>
           </div>
         )}
 
         {phase === "done" && (
-          <div className="flex items-center justify-center gap-2 py-3 text-emerald-400 text-sm font-medium">
+          <div className="flex items-center justify-center gap-2 py-4 text-emerald-400 text-sm font-medium">
             <Loader2 className="w-4 h-4 animate-spin" />
             Populating your module…
           </div>
@@ -545,8 +562,8 @@ function ConversationMode({ onGenerated }: { onGenerated: (m: GeneratedModule) =
         {chatError && (
           <div className="text-xs text-red-400 text-center bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
             {chatError} —{" "}
-            <button className="underline" onClick={() => { setChatError(null); openMic(messages); }}>
-              retry
+            <button className="underline" onClick={() => { setChatError(null); restartVADLoop(); }}>
+              retry mic
             </button>
           </div>
         )}
@@ -561,7 +578,7 @@ function ConversationMode({ onGenerated }: { onGenerated: (m: GeneratedModule) =
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleTextSend(); } }}
-              placeholder={isAiTurn ? "Nova is talking…" : "Or type a response…"}
+              placeholder={isAiTurn ? "Nova is talking…" : "Or type a response instead…"}
               disabled={phase === "ai-thinking" || phase === "ai-speaking" || phase === "done" || phase === "booting"}
               rows={1}
               className="flex-1 px-3 py-2.5 rounded-xl border border-border bg-muted/30 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-violet-500/50 placeholder:text-muted-foreground disabled:opacity-40 max-h-24 overflow-y-auto"
@@ -576,7 +593,7 @@ function ConversationMode({ onGenerated }: { onGenerated: (m: GeneratedModule) =
             </button>
           </div>
           <p className="text-xs text-muted-foreground text-center mt-1.5">
-            Nova listens automatically · or type and press Enter
+            Nova listens automatically · pause to send · or type + Enter
           </p>
         </div>
       )}
@@ -585,7 +602,7 @@ function ConversationMode({ onGenerated }: { onGenerated: (m: GeneratedModule) =
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Quick Generate mode (unchanged)
+// Quick Generate mode
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SelectField({ value, onChange, options }: {
@@ -726,15 +743,16 @@ function QuickMode({ onGenerated }: { onGenerated: (m: GeneratedModule) => void 
       <div className="flex-1" />
 
       <div className="pt-2">
-        <Button
+        <button
+          type="button"
           onClick={handleGenerate}
           disabled={isGenerating || !prompt.trim()}
-          className="w-full bg-violet-600 hover:bg-violet-500 text-white"
+          className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium text-sm transition-colors"
         >
           {isGenerating
-            ? <span className="flex items-center gap-2"><div className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />Generating module…</span>
-            : <span className="flex items-center gap-2"><Wand2 className="w-4 h-4" />Generate Module</span>}
-        </Button>
+            ? <><div className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />Generating module…</>
+            : <><Wand2 className="w-4 h-4" />Generate Module</>}
+        </button>
         <p className="text-xs text-muted-foreground text-center mt-2">
           Takes 10–20 seconds · ⌘+Enter · Edit everything after
         </p>
@@ -782,40 +800,33 @@ export function AiPlanningPanel({ onGenerated, onClose }: AiPlanningPanelProps) 
 
         {/* Mode tabs */}
         <div className="flex border-b border-border shrink-0">
-          <button
-            type="button"
-            onClick={() => setMode("quick")}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors border-b-2 ${
-              mode === "quick"
-                ? "border-violet-500 text-violet-400 bg-violet-500/5"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5" />
-            Quick Generate
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("conversation")}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors border-b-2 ${
-              mode === "conversation"
-                ? "border-violet-500 text-violet-400 bg-violet-500/5"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            Talk to Nova
-          </button>
+          {([
+            { id: "quick", icon: <Zap className="w-3.5 h-3.5" />, label: "Quick Generate" },
+            { id: "conversation", icon: <MessageSquare className="w-3.5 h-3.5" />, label: "Talk to Nova" },
+          ] as const).map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setMode(tab.id)}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors border-b-2 ${
+                mode === tab.id
+                  ? "border-violet-500 text-violet-400 bg-violet-500/5"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab.icon}{tab.label}
+            </button>
+          ))}
         </div>
 
         {/* Mode hint */}
         <div className="px-5 py-2 bg-muted/20 border-b border-border/50 shrink-0">
           {mode === "quick"
-            ? <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Quick:</span> Describe your scenario once and generate instantly.</p>
-            : <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Nova</span> listens, asks follow-up questions, and builds a deep module with you.</p>}
+            ? <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Quick:</span> Describe once and generate instantly.</p>
+            : <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Nova</span> listens automatically — just speak. Pause when done and she'll respond.</p>}
         </div>
 
-        {/* Mode content — key forces remount when switching so Nova's mic is torn down */}
+        {/* Content — key forces remount on tab switch so mic is torn down cleanly */}
         {mode === "quick"
           ? <QuickMode key="quick" onGenerated={handleGenerated} />
           : <ConversationMode key="conversation" onGenerated={handleGenerated} />}
