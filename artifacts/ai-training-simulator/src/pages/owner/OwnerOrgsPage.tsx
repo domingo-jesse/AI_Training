@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { useImpersonation } from "@/contexts/ImpersonationContext";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 import { OwnerLayout } from "./OwnerLayout";
-import { Building2, Plus, Users, BookOpen, ClipboardCheck, Trash2, Pencil, X, Check, ChevronRight, RefreshCw } from "lucide-react";
+import { Building2, Plus, Users, BookOpen, ClipboardCheck, Trash2, Pencil, X, Check, ChevronRight, RefreshCw, Eye, GraduationCap, ShieldCheck } from "lucide-react";
 
 interface Org {
   organization_id: number;
@@ -100,22 +101,47 @@ function CreateOrgModal({ onClose, onCreated }: { onClose: () => void; onCreated
 
 function OrgDetailPanel({ orgId, onClose }: { orgId: number; onClose: () => void }) {
   const [detail, setDetail] = useState<OrgDetail | null>(null);
+  const { startImpersonation } = useImpersonation();
 
   useEffect(() => {
     fetch(`${basePath}/api/owner/orgs/${orgId}`, { credentials: "include" })
       .then(r => r.ok ? r.json() : null).then(d => d && setDetail(d));
   }, [orgId]);
 
+  const orgName = detail?.org.name ?? "";
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
       <div className="bg-[#111827] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-5 border-b border-white/8">
           <div>
-            <h2 className="text-lg font-semibold text-white">{detail?.org.name ?? "Loading…"}</h2>
+            <h2 className="text-lg font-semibold text-white">{orgName || "Loading…"}</h2>
             <p className="text-xs text-gray-400 mt-0.5">Organization ID: {orgId}</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
+
+        {/* View-as actions */}
+        {detail && (
+          <div className="px-6 py-4 border-b border-white/8 flex items-center gap-3">
+            <Eye className="w-4 h-4 text-gray-400 shrink-0" />
+            <span className="text-xs text-gray-400 font-medium">Preview as:</span>
+            <button
+              onClick={() => { onClose(); startImpersonation(orgId, orgName, "admin"); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/20 text-blue-300 text-xs font-medium transition-colors"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Admin
+            </button>
+            <button
+              onClick={() => { onClose(); startImpersonation(orgId, orgName, "learner"); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/20 text-emerald-300 text-xs font-medium transition-colors"
+            >
+              <GraduationCap className="w-3.5 h-3.5" />
+              Learner
+            </button>
+          </div>
+        )}
 
         {!detail ? (
           <div className="flex items-center justify-center h-40">

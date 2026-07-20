@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { modules, moduleQuestions, organizationMemberships, assignments } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
-import { requireLocalUser } from "../middleware/auth";
+import { requireLocalUser, isPlatformOwner } from "../middleware/auth";
 import { generateModuleWithLLM } from "../services/llmModuleGeneratorService";
 
 const router: IRouter = Router();
@@ -10,6 +10,8 @@ const router: IRouter = Router();
 const ADMIN_ROLES = ["owner", "admin", "manager"];
 
 async function assertOrgAdmin(localUser: any, orgId: number, res: any): Promise<boolean> {
+  if (isPlatformOwner(localUser)) return true;
+
   const [m] = await db
     .select({ role: organizationMemberships.role })
     .from(organizationMemberships)

@@ -38,6 +38,7 @@ import LearnerSettingsPage from "@/pages/learner/LearnerSettingsPage";
 
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { OrganizationProvider } from "@/contexts/OrganizationContext";
+import { ImpersonationProvider } from "@/contexts/ImpersonationContext";
 
 const queryClient = new QueryClient();
 
@@ -185,6 +186,7 @@ function ClerkProviderWithRoutes() {
     >
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
+        <ImpersonationProvider>
         <OrganizationProvider>
         <Switch>
           <Route path="/" component={HomeRedirect} />
@@ -219,6 +221,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/learner/settings" component={LearnerSettingsPage} />
         </Switch>
         </OrganizationProvider>
+        </ImpersonationProvider>
       </QueryClientProvider>
     </ClerkProvider>
   );

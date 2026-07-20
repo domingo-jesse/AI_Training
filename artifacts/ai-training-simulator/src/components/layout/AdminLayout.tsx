@@ -1,6 +1,8 @@
 import { ReactNode, useState, useEffect, useRef } from 'react';
 import { AdminSidebar } from './AdminSidebar';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useImpersonation } from '@/contexts/ImpersonationContext';
+import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { Redirect, Link, useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { Menu, Settings, User, LogOut, Bell, ChevronDown, ShieldCheck } from 'lucide-react';
@@ -239,13 +241,15 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!localUser || (localUser.role !== 'admin' && localUser.role !== 'developer')) {
+  const { isImpersonating, orgName: impOrgName, role: impRole } = useImpersonation();
+
+  if (!localUser || (!isImpersonating && localUser.role !== 'admin' && localUser.role !== 'developer')) {
     return <Redirect to="/" />;
   }
 
   const userName  = localUser.name  ?? 'Admin';
   const userEmail = localUser.email ?? '';
-  const userRole  = localUser.role  ?? 'admin';
+  const userRole  = isImpersonating ? (impRole ?? localUser.role ?? 'admin') : (localUser.role ?? 'admin');
 
   return (
     <div className="flex min-h-[100dvh] bg-background">
@@ -258,6 +262,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       />
 
       <main className="flex-1 flex flex-col h-[100dvh] overflow-y-auto min-w-0">
+        <ImpersonationBanner />
         <TopBar
           onMenuClick={() => setMobileOpen(true)}
           isMobile={isMobile}

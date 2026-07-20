@@ -1,7 +1,9 @@
 import { ReactNode, useState, useEffect, useRef } from 'react';
 import { LearnerSidebar } from './LearnerSidebar';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { Redirect, useLocation } from 'wouter';
+import { useImpersonation } from '@/contexts/ImpersonationContext';
+import { ImpersonationBanner } from '@/components/ImpersonationBanner';
+import { Redirect, Link, useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { Menu, Settings, User, LogOut, Bell, ChevronDown, GraduationCap } from 'lucide-react';
 import { useClerk } from '@clerk/react';
@@ -227,7 +229,9 @@ export function LearnerLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!localUser || (localUser.role !== 'learner' && localUser.role !== 'developer')) {
+  const { isImpersonating } = useImpersonation();
+
+  if (!localUser || (!isImpersonating && localUser.role !== 'learner' && localUser.role !== 'developer')) {
     return <Redirect to="/" />;
   }
 
@@ -244,6 +248,7 @@ export function LearnerLayout({ children }: { children: ReactNode }) {
       />
 
       <main className="flex-1 flex flex-col h-[100dvh] overflow-y-auto min-w-0">
+        <ImpersonationBanner />
         <TopBar
           onMenuClick={() => setMobileOpen(true)}
           isMobile={isMobile}

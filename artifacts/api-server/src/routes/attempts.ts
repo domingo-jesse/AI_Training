@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, attempts, modules, users, submissionScores, organizationMemberships, moduleQuestions } from "@workspace/db";
 import { eq, and, desc, asc, inArray } from "drizzle-orm";
-import { requireLocalUser } from "../middleware/auth";
+import { requireLocalUser, isPlatformOwner } from "../middleware/auth";
 import { gradeWithLLM } from "../services/llmGraderService";
 
 const router: IRouter = Router();
@@ -9,6 +9,7 @@ const router: IRouter = Router();
 const ADMIN_ROLES = ["owner", "admin", "manager"];
 
 async function isOrgAdmin(localUser: any, orgId: number): Promise<boolean> {
+  if (isPlatformOwner(localUser)) return true;
   const [m] = await db.select({ role: organizationMemberships.role })
     .from(organizationMemberships)
     .where(and(

@@ -3,6 +3,13 @@ import { getAuth } from "@clerk/express";
 import { db, users as usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
+export const PLATFORM_OWNER_EMAILS = (process.env.PLATFORM_OWNER_EMAILS ?? "domingo.jesse@gmail.com")
+  .split(",").map(e => e.trim().toLowerCase());
+
+export function isPlatformOwner(user: any): boolean {
+  return !!(user?.email && PLATFORM_OWNER_EMAILS.includes(user.email.toLowerCase()));
+}
+
 /**
  * Requires a valid Clerk session. Attaches req.clerkUserId.
  */
@@ -58,7 +65,22 @@ export async function requireLocalUser(
   }
 
   (req as any).clerkUserId = clerkUserId;
-  (req as any).localUser = user;
+
+  // Platform owner impersonation — honour override headers
+  if (isPlatformOwner(user)) {
+    const orgOverride = req.headers["x-owner-org"] as string | undefined;
+    const roleOverride = req.headers["x-owner-role"] as string | undefined;
+    (req as any).localUser = {
+      ...user,
+      _isPlatformOwner: true,
+      ...(orgOverride && roleOverride && !isNaN(Number(orgOverride))
+        ? { organizationId: Number(orgOverride), role: roleOverride }
+        : {}),
+    };
+  } else {
+    (req as any).localUser = user;
+  }
+
   next();
 }
 

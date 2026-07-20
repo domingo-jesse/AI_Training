@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, organizationMemberships, organizations, users as usersTable } from "@workspace/db";
 import { eq, and, ilike } from "drizzle-orm";
-import { requireLocalUser } from "../middleware/auth";
+import { requireLocalUser, isPlatformOwner } from "../middleware/auth";
 
 const router: IRouter = Router();
 
@@ -48,30 +48,35 @@ router.get("/organizations/:orgId/members", requireLocalUser, async (req, res): 
     return;
   }
 
-  // Verify requester is a member with sufficient role
-  const [requesterMembership] = await db
-    .select()
-    .from(organizationMemberships)
-    .where(
-      and(
-        eq(organizationMemberships.organizationId, orgId),
-        eq(organizationMemberships.userId, localUser.userId),
-        eq(organizationMemberships.status, "active"),
+  // Platform owner can view any org's members without a membership
+  if (!isPlatformOwner(localUser)) {
+    const [requesterMembership] = await db
+      .select()
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.organizationId, orgId),
+          eq(organizationMemberships.userId, localUser.userId),
+          eq(organizationMemberships.status, "active"),
+        )
       )
-    )
-    .limit(1);
+      .limit(1);
 
-  if (!requesterMembership) {
-    res.status(403).json({ error: "You are not a member of this organization" });
-    return;
+    if (!requesterMembership) {
+      res.status(403).json({ error: "You are not a member of this organization" });
+      return;
+    }
+
+    if (!ADMIN_ROLES.includes(requesterMembership.role)) {
+      res.status(403).json({ error: "Insufficient role to view members" });
+      return;
+    }
   }
 
-  if (!ADMIN_ROLES.includes(requesterMembership.role)) {
-    res.status(403).json({ error: "Insufficient role to view members" });
-    return;
-  }
+  // Fetch all members — filter out platform owner emails so they stay hidden
+  const ownerEmails = (process.env.PLATFORM_OWNER_EMAILS ?? "domingo.jesse@gmail.com")
+    .split(",").map(e => e.trim().toLowerCase());
 
-  // Fetch all members with user profile data
   const members = await db
     .select({
       membershipId: organizationMemberships.id,
@@ -88,7 +93,7 @@ router.get("/organizations/:orgId/members", requireLocalUser, async (req, res): 
     .where(eq(organizationMemberships.organizationId, orgId))
     .orderBy(organizationMemberships.createdAt);
 
-  res.json(members);
+  res.json(members.filter(m => !ownerEmails.includes(m.email?.toLowerCase() ?? "")));
 });
 
 /**
