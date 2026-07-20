@@ -404,6 +404,11 @@ Your goal: build a deep, nuanced understanding of the training need before you g
 - Any real examples, edge cases, or failure modes the admin has seen
 - What they've tried before and what didn't work (if relevant)
 - Whether there are specific objections, personas, or scripts the AI character should use
+- **For every ai_conversation question**: the AI character's personality and difficulty level. Ask specifically:
+  - How do they want the character to come across? (Friendly and approachable? Neutral and professional? Difficult and demanding? Angry and hostile?)
+  - What specific traits? (Stubborn and won't budge easily? Argumentative and challenges everything? Passive-aggressive? Easily escalated? Emotional? Formal and cold? Condescending?)
+  - What does it take to calm them down or win them over — or are they unwinnable?
+  - Any specific lines, complaints, or objections this character would typically throw at the learner?
 
 Before you generate, check in: "I think I have a solid picture — want to add anything before I build it? Any edge cases or specific moments you really want covered?"
 
@@ -454,7 +459,10 @@ JSON schema:
 
 Generate 4-6 questions. Mix open_text and ai_conversation. Make them progressively harder and grounded in what the admin told you.
 The scenarioContext should be 3-5 paragraphs, richly detailed, and feel like a real situation the learner is stepping into.
-The aiRoleOrPersona and aiConversationPrompt for ai_conversation questions must reflect the specific persona details from the conversation.
+For ai_conversation questions:
+- aiRoleOrPersona: short display name like "Angry Customer — Maria" or "Stubborn Manager — Derek" (include a first name for realism)
+- aiConversationPrompt: a full character brief an actor could use. Include: who they are, their emotional state, their specific personality traits and HOW those traits show up in conversation (give examples of lines they'd say), what makes them escalate, what it takes to de-escalate or win them over, and their communication style. Be specific — "stubborn" is not enough. Write it so the AI can convincingly embody this character.
+
 Start the very first turn with a warm, brief greeting as Nova and your first question.`;
 
   const { OpenAI } = await import("openai");

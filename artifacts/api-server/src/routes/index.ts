@@ -10,6 +10,7 @@ import groupsRouter from "./groups";
 import settingsRouter from "./settings";
 import ownerRouter from "./owner";
 import deepgramRouter from "./deepgram";
+import conversationRouter from "./conversation";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(groupsRouter);
 router.use(settingsRouter);
 router.use(ownerRouter);
 router.use(deepgramRouter);
+router.use(conversationRouter);
 
 export default router;

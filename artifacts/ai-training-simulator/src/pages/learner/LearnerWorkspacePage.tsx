@@ -7,11 +7,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { useVoice } from "@/hooks/useVoice";
-import { VoiceToolbar } from "@/components/voice/VoiceToolbar";
+import { AiConversationChat } from "@/components/voice/AiConversationChat";
 import {
   ChevronRight, ChevronLeft, Send, CheckCircle2, BookOpen,
-  Clock, AlertCircle, Target, Lightbulb, FileText, Mic,
+  Clock, AlertCircle, Target, Lightbulb, FileText, Mic, MessageSquare,
 } from "lucide-react";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -49,9 +48,9 @@ interface ResponseEntry {
 type Phase = "intro" | "questions" | "submitted";
 
 function useModule(moduleId: number | null) {
-  const [mod, setMod] = useState<Module | null>(null);
+  const [mod, setMod]       = useState<Module | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]   = useState<string | null>(null);
 
   useEffect(() => {
     if (!moduleId) return;
@@ -68,7 +67,7 @@ function useModule(moduleId: number | null) {
 
 export default function LearnerWorkspacePage() {
   const [, setLocation] = useLocation();
-  const { localUser } = useCurrentUser();
+  const { localUser }   = useCurrentUser();
   const params   = new URLSearchParams(window.location.search);
   const moduleId = params.get("moduleId") ? parseInt(params.get("moduleId")!) : null;
   const orgId    = localUser?.organizationId ?? null;
@@ -83,69 +82,33 @@ export default function LearnerWorkspacePage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // ── Voice ──────────────────────────────────────────────────────────────────
-  const voice = useVoice();
-
   const questions      = mod?.questions ?? [];
   const totalQuestions = questions.length;
   const progress       = phase === "intro" ? 0 : phase === "submitted" ? 100
     : Math.round((currentQ / totalQuestions) * 100);
 
   const currentQuestion = questions[currentQ];
-  const currentResponse = responses.find(r => r.questionId === currentQuestion?.questionId)?.response ?? "";
+  const isAiConversation = currentQuestion?.questionType === "ai_conversation";
 
-  // Build the text the AI persona "says" for a given question
-  const buildSpeakText = useCallback((q: Question | undefined): string => {
-    if (!q) return "";
-    if (q.questionType === "ai_conversation" && q.aiRoleOrPersona) {
-      return `${q.aiRoleOrPersona}. ${q.questionText}`;
-    }
-    return q.questionText;
-  }, []);
+  const currentResponse = responses.find(
+    r => r.questionId === currentQuestion?.questionId
+  )?.response ?? "";
 
-  // Auto-speak new question when we advance (only for ai_conversation type)
-  const prevQIndexRef = useRef<number>(-1);
-  useEffect(() => {
-    if (phase !== "questions" || !currentQuestion) return;
-    if (prevQIndexRef.current === currentQ) return;
-    prevQIndexRef.current = currentQ;
-
-    if (currentQuestion.questionType === "ai_conversation") {
-      voice.speak(buildSpeakText(currentQuestion));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentQ, phase]);
-
-  // Stop any speech when leaving questions phase
-  useEffect(() => {
-    if (phase !== "questions") voice.cancelSpeak();
-  }, [phase]); // eslint-disable-line
-
-  const setResponse = (text: string) => {
+  const setResponse = useCallback((text: string) => {
     if (!currentQuestion) return;
     setResponses(prev => {
-      const existing = prev.findIndex(r => r.questionId === currentQuestion.questionId);
       const entry: ResponseEntry = {
         questionId:   currentQuestion.questionId,
         questionText: currentQuestion.questionText,
         response:     text,
       };
-      if (existing >= 0) return prev.map((r, i) => i === existing ? entry : r);
+      const idx = prev.findIndex(r => r.questionId === currentQuestion.questionId);
+      if (idx >= 0) return prev.map((r, i) => i === idx ? entry : r);
       return [...prev, entry];
     });
-  };
+  }, [currentQuestion]);
 
-  // Append STT transcript to whatever is already typed
-  const handleStopRecording = useCallback(async () => {
-    const transcript = await voice.stopRecording();
-    if (transcript) {
-      setResponse(currentResponse ? `${currentResponse} ${transcript}` : transcript);
-      setTimeout(() => textareaRef.current?.focus(), 50);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voice, currentResponse]);
-
-  // ── Attempt lifecycle ──────────────────────────────────────────────────────
+  // ── Attempt lifecycle ────────────────────────────────────────────────────
 
   const startAttempt = async () => {
     if (!moduleId || !orgId) { setSubmitError("Missing module or organization context."); return; }
@@ -163,7 +126,6 @@ export default function LearnerWorkspacePage() {
       setAttemptId(a.attemptId);
       setPhase("questions");
       setCurrentQ(0);
-      prevQIndexRef.current = -1; // reset so auto-speak fires
     } catch (e: any) {
       setSubmitError(e.message);
     } finally {
@@ -171,18 +133,18 @@ export default function LearnerWorkspacePage() {
     }
   };
 
-  const goNext = async () => {
-    // stop any voice activity before navigating
-    voice.cancelSpeak();
+  const saveProgress = useCallback((updatedResponses?: ResponseEntry[]) => {
+    if (!attemptId) return;
+    fetch(`${base}/api/attempts/${attemptId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ questionResponses: updatedResponses ?? responses }),
+    }).catch(() => {});
+  }, [attemptId, responses]);
 
-    if (attemptId) {
-      fetch(`${base}/api/attempts/${attemptId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ questionResponses: responses }),
-      }).catch(() => {});
-    }
+  const goNext = async () => {
+    saveProgress();
     if (currentQ < totalQuestions - 1) {
       setCurrentQ(q => q + 1);
       setTimeout(() => textareaRef.current?.focus(), 100);
@@ -211,7 +173,12 @@ export default function LearnerWorkspacePage() {
     }
   };
 
-  // ── Guard screens ──────────────────────────────────────────────────────────
+  // Called by AiConversationChat when learner ends the session
+  const handleConversationComplete = useCallback((transcript: string) => {
+    setResponse(transcript);
+  }, [setResponse]);
+
+  // ── Guard screens ──────────────────────────────────────────────────────
 
   if (!moduleId) {
     return (
@@ -248,7 +215,7 @@ export default function LearnerWorkspacePage() {
     );
   }
 
-  // ── Submitted ──────────────────────────────────────────────────────────────
+  // ── Submitted ──────────────────────────────────────────────────────────
 
   if (phase === "submitted") {
     return (
@@ -280,10 +247,10 @@ export default function LearnerWorkspacePage() {
     );
   }
 
-  // ── Intro ──────────────────────────────────────────────────────────────────
+  // ── Intro ──────────────────────────────────────────────────────────────
 
   if (phase === "intro") {
-    const hasVoiceQuestions = questions.some(q => q.questionType === "ai_conversation");
+    const hasConversationQuestions = questions.some(q => q.questionType === "ai_conversation");
     return (
       <LearnerLayout>
         <div className="max-w-3xl mx-auto">
@@ -299,9 +266,9 @@ export default function LearnerWorkspacePage() {
                   </span>
                 )}
                 <Badge variant="outline">{totalQuestions} question{totalQuestions !== 1 ? "s" : ""}</Badge>
-                {hasVoiceQuestions && (
+                {hasConversationQuestions && (
                   <Badge variant="outline" className="text-primary border-primary/40 bg-primary/5 gap-1">
-                    <Mic className="w-3 h-3" /> Voice-enabled
+                    <Mic className="w-3 h-3" /> Voice + AI Roleplay
                   </Badge>
                 )}
               </div>
@@ -340,11 +307,16 @@ export default function LearnerWorkspacePage() {
                 <Target className="w-4 h-4 text-primary" />
                 <p className="text-sm font-semibold">What you'll do</p>
               </div>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• Read the scenario carefully</li>
+              <ul className="text-sm text-muted-foreground space-y-1.5">
+                <li>• Read the scenario carefully before beginning</li>
                 <li>• Answer {totalQuestions} question{totalQuestions !== 1 ? "s" : ""} based on your analysis</li>
-                {hasVoiceQuestions && <li>• You can speak your responses — mic button appears on each question</li>}
-                <li>• Your responses will be reviewed and graded</li>
+                {hasConversationQuestions && (
+                  <li className="flex items-start gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                    <span>Some questions are live AI roleplay — you'll speak directly with an AI character who has a real personality. It listens automatically; pause when done speaking.</span>
+                  </li>
+                )}
+                <li>• Your responses will be reviewed and graded by your admin</li>
               </ul>
             </CardContent>
           </Card>
@@ -374,7 +346,7 @@ export default function LearnerWorkspacePage() {
     );
   }
 
-  // ── Questions (no questions guard) ─────────────────────────────────────────
+  // ── No questions guard ─────────────────────────────────────────────────
 
   if (questions.length === 0) {
     return (
@@ -382,22 +354,21 @@ export default function LearnerWorkspacePage() {
         <Card className="flex flex-col items-center p-16 text-center max-w-lg mx-auto">
           <AlertCircle className="w-10 h-10 text-amber-400 mb-4" />
           <h2 className="text-lg font-semibold mb-2">No questions available</h2>
-          <p className="text-muted-foreground text-sm mb-6">
-            This module doesn't have any questions yet.
-          </p>
+          <p className="text-muted-foreground text-sm mb-6">This module doesn't have any questions yet.</p>
           <Button variant="outline" onClick={() => setLocation("/learner/modules")}>Back to My Modules</Button>
         </Card>
       </LearnerLayout>
     );
   }
 
-  // ── Questions ──────────────────────────────────────────────────────────────
+  // ── Questions ──────────────────────────────────────────────────────────
 
-  const isAiConversation = currentQuestion?.questionType === "ai_conversation";
+  const conversationComplete = isAiConversation && currentResponse.length > 0;
 
   return (
     <LearnerLayout>
       <div className="max-w-3xl mx-auto">
+
         {/* Progress header */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
@@ -409,61 +380,95 @@ export default function LearnerWorkspacePage() {
           <Progress value={progress} className="h-2" />
         </div>
 
-        {/* AI persona label (for conversation questions) */}
-        {isAiConversation && currentQuestion.aiRoleOrPersona && (
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-7 h-7 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0">
-              <span className="text-xs font-bold text-violet-400">AI</span>
-            </div>
-            <p className="text-xs text-violet-400 font-medium">{currentQuestion.aiRoleOrPersona}</p>
+        {/* Question type badge */}
+        <div className="flex items-center gap-2 mb-3">
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+            isAiConversation
+              ? "bg-violet-500/10 border-violet-500/30 text-violet-400"
+              : "bg-muted border-border text-muted-foreground"
+          }`}>
+            {isAiConversation
+              ? <><MessageSquare className="w-3 h-3" /> AI Roleplay</>
+              : <><FileText className="w-3 h-3" /> Written Response</>}
           </div>
-        )}
+          <span className="text-xs text-muted-foreground">
+            {currentQuestion?.maxPoints ?? 10} points
+          </span>
+        </div>
 
-        {/* Question card */}
-        <Card className="mb-4">
-          <CardContent className="p-6">
-            <div className="flex items-start gap-3 mb-5">
-              <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold shrink-0">
-                {currentQ + 1}
-              </div>
-              <p className="text-base font-medium leading-relaxed pt-1">{currentQuestion?.questionText}</p>
-            </div>
+        {/* ── AI Conversation question ── */}
+        {isAiConversation ? (
+          <div className="mb-4">
+            {/* Question context card */}
+            <Card className="mb-3 border-violet-500/20 bg-violet-500/5">
+              <CardContent className="flex gap-3 p-4">
+                <div className="w-7 h-7 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0 text-sm">🎭</div>
+                <div>
+                  <p className="text-xs font-semibold text-violet-400 uppercase tracking-wide mb-0.5">Roleplay Objective</p>
+                  <p className="text-sm text-foreground">{currentQuestion.questionText}</p>
+                </div>
+              </CardContent>
+            </Card>
 
-            <Textarea
-              ref={textareaRef}
-              value={currentResponse}
-              onChange={e => setResponse(e.target.value)}
-              placeholder={
-                isAiConversation
-                  ? "Type or speak your response…"
-                  : "Type your response here…"
-              }
-              rows={8}
-              className="resize-none text-sm mb-4"
-              autoFocus
-            />
-
-            {/* Voice toolbar */}
-            <div className="border-t border-border/50 pt-4">
-              <VoiceToolbar
-                status={voice.status}
-                error={voice.error}
-                onStartRecording={voice.startRecording}
-                onStopRecording={handleStopRecording}
-                onSpeak={() => voice.speak(buildSpeakText(currentQuestion))}
-                onCancelSpeak={voice.cancelSpeak}
-                canSpeak={!!currentQuestion}
+            {/* Conversation UI */}
+            {!conversationComplete ? (
+              <AiConversationChat
+                key={currentQuestion.questionId}
+                question={currentQuestion.aiConversationPrompt?.split("\n")[0] ?? currentQuestion.questionText}
+                persona={currentQuestion.aiRoleOrPersona ?? "AI Character"}
+                systemPrompt={currentQuestion.aiConversationPrompt ?? "You are a realistic character in a workplace training simulation."}
+                onComplete={handleConversationComplete}
               />
-            </div>
+            ) : (
+              /* Conversation done — show transcript summary */
+              <Card className="border-emerald-500/30 bg-emerald-500/5">
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <p className="text-sm font-semibold text-emerald-400">Conversation recorded</p>
+                  </div>
+                  <div className="text-xs text-muted-foreground whitespace-pre-wrap font-mono bg-muted/30 rounded-lg p-3 max-h-48 overflow-y-auto">
+                    {currentResponse}
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground underline mt-2"
+                    onClick={() => setResponse("")}
+                  >
+                    Redo conversation
+                  </button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        ) : (
+          /* ── Open text question ── */
+          <Card className="mb-4">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-3 mb-5">
+                <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold shrink-0">
+                  {currentQ + 1}
+                </div>
+                <p className="text-base font-medium leading-relaxed pt-1">{currentQuestion?.questionText}</p>
+              </div>
 
-            <div className="flex items-center justify-between mt-3">
-              <p className="text-xs text-muted-foreground">
-                Max {currentQuestion?.maxPoints ?? 10} point{(currentQuestion?.maxPoints ?? 10) !== 1 ? "s" : ""}
-              </p>
-              <p className="text-xs text-muted-foreground">{currentResponse.length} chars</p>
-            </div>
-          </CardContent>
-        </Card>
+              <Textarea
+                ref={textareaRef}
+                value={currentResponse}
+                onChange={e => setResponse(e.target.value)}
+                placeholder="Type your response here…"
+                rows={8}
+                className="resize-none text-sm"
+                autoFocus
+              />
+
+              <div className="flex items-center justify-between mt-3">
+                <p className="text-xs text-muted-foreground">Max {currentQuestion?.maxPoints ?? 10} points</p>
+                <p className="text-xs text-muted-foreground">{currentResponse.length} chars</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {submitError && (
           <Card className="mb-4 border-red-500/30 bg-red-500/10">
@@ -474,16 +479,17 @@ export default function LearnerWorkspacePage() {
           </Card>
         )}
 
+        {/* Navigation */}
         <div className="flex gap-3">
           {currentQ > 0 && (
-            <Button variant="outline" onClick={() => { voice.cancelSpeak(); setCurrentQ(q => q - 1); }}>
+            <Button variant="outline" onClick={() => setCurrentQ(q => q - 1)}>
               <ChevronLeft className="w-4 h-4 mr-1" /> Back
             </Button>
           )}
           <Button
             className="flex-1"
             onClick={goNext}
-            disabled={submitting || !currentResponse.trim() || voice.isRecording || voice.status === "transcribing"}
+            disabled={submitting || !currentResponse.trim()}
           >
             {submitting ? (
               <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2" />
@@ -494,6 +500,12 @@ export default function LearnerWorkspacePage() {
             )}
           </Button>
         </div>
+
+        {isAiConversation && !conversationComplete && (
+          <p className="text-center text-xs text-muted-foreground mt-2">
+            Complete the conversation above before continuing
+          </p>
+        )}
       </div>
     </LearnerLayout>
   );
