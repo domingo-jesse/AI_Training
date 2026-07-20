@@ -1,6 +1,9 @@
 import { Link, useLocation } from 'wouter';
-import { Users, FileText, CheckSquare, BarChart, Settings, User, LayoutDashboard, Layers, BookOpen, UserPlus, Database, Terminal, Beaker, ChevronLeft, ChevronRight, X, Tag } from 'lucide-react';
+import { Users, FileText, CheckSquare, BarChart, Settings, User, LayoutDashboard, Layers, BookOpen, UserPlus, Database, Terminal, Beaker, ChevronLeft, ChevronRight, X, Tag, Shield } from 'lucide-react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useUser } from '@clerk/react';
+
+const PLATFORM_OWNER_EMAILS = ['domingo.jesse@gmail.com'];
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -35,7 +38,11 @@ interface AdminSidebarProps {
 export function AdminSidebar({ isOpen, isCollapsed, onClose, onToggleCollapse, isMobile }: AdminSidebarProps) {
   const [location] = useLocation();
   const { localUser } = useCurrentUser();
+  const { user: clerkUser } = useUser();
   const isDeveloper = localUser?.role === 'developer';
+  const isPlatformOwner = PLATFORM_OWNER_EMAILS.includes(
+    clerkUser?.primaryEmailAddress?.emailAddress?.toLowerCase() ?? ''
+  );
 
   const collapsed = !isMobile && isCollapsed;
 
@@ -121,6 +128,32 @@ export function AdminSidebar({ isOpen, isCollapsed, onClose, onToggleCollapse, i
             )}
             {collapsed && <div className="my-2 border-t border-sidebar-border" />}
             {devItems.map(navLink)}
+          </>
+        )}
+
+        {isPlatformOwner && (
+          <>
+            {collapsed && <div className="my-2 border-t border-sidebar-border" />}
+            {!collapsed && (
+              <div className="text-xs font-semibold text-sidebar-foreground/40 uppercase tracking-wider mt-6 mb-3 px-2">
+                Platform
+              </div>
+            )}
+            <Link
+              href="/owner"
+              onClick={isMobile ? onClose : undefined}
+              title={collapsed ? 'Owner Portal' : undefined}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 ${
+                collapsed ? 'justify-center' : ''
+              } ${
+                location.startsWith('/owner')
+                  ? 'bg-violet-600/20 text-violet-300 font-medium'
+                  : 'text-violet-400/70 hover:text-violet-300 hover:bg-violet-600/10'
+              }`}
+            >
+              <Shield className="w-5 h-5 shrink-0" />
+              {!collapsed && <span className="truncate">Owner Portal</span>}
+            </Link>
           </>
         )}
       </div>
