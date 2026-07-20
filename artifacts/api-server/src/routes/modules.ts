@@ -361,4 +361,142 @@ router.post("/modules/generate", requireLocalUser, async (req, res): Promise<voi
   }
 });
 
+/**
+ * POST /api/modules/plan-chat
+ * Conversational AI planning agent for module creation.
+ * Body: { messages: {role: "user"|"assistant", content: string}[] }
+ * Returns: { done: false, message: string }
+ *       or { done: true,  message: string, module: GeneratedModule }
+ *
+ * The AI is instructed to gather context in ≤4 exchanges then output
+ * <GENERATE>{json}</GENERATE> — we parse and return it as the module.
+ */
+router.post("/modules/plan-chat", requireLocalUser, async (req, res): Promise<void> => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    res.status(503).json({ error: "OpenAI API key not configured", code: "NO_API_KEY" });
+    return;
+  }
+
+  const { messages } = req.body as {
+    messages: { role: "user" | "assistant"; content: string }[];
+  };
+
+  if (!Array.isArray(messages)) {
+    res.status(400).json({ error: "messages array required" });
+    return;
+  }
+
+  const SYSTEM = `You are an expert instructional designer helping an admin plan a training simulation module. Your job is to have a SHORT, focused conversation — ask at most 4 questions total — then generate the complete module.
+
+Rules:
+- Ask EXACTLY ONE question per turn. Be warm, brief, and direct (1-2 sentences max).
+- Never number your questions out loud.
+- Gather: (1) scenario/skill topic, (2) learner audience & level, (3) what success looks like, (4) any special requirements (optional).
+- If the user's first message already covers multiple points, skip the covered questions.
+- After 3-4 exchanges (or sooner if you have enough), output your final brief spoken confirmation, then immediately follow it with:
+<GENERATE>
+{the complete module JSON}
+</GENERATE>
+
+The JSON must match this exact schema:
+{
+  "title": string,
+  "category": string,
+  "difficulty": "beginner"|"intermediate"|"advanced",
+  "description": string,
+  "estimatedTime": string,
+  "learningObjectives": string,
+  "scenarioTicket": string,
+  "scenarioContext": string,
+  "hiddenRootCause": string,
+  "expectedDiagnosis": string,
+  "expectedReasoningPath": string,
+  "expectedNextSteps": string,
+  "lessonTakeaway": string,
+  "llmScoringEnabled": true,
+  "llmGraderInstructions": string,
+  "questions": [
+    {
+      "questionText": string,
+      "expectedAnswer": string,
+      "maxPoints": 10|15|20,
+      "questionType": "open_text"|"ai_conversation",
+      "rubric": string,
+      "aiRoleOrPersona": string,
+      "aiConversationPrompt": string,
+      "evaluationFocus": string
+    }
+  ]
+}
+
+Generate 3-5 questions. Mix open_text and ai_conversation types. Make them progressively harder.
+The scenarioContext must be 3-5 detailed paragraphs that feel realistic.
+Start the very first turn by greeting briefly and asking your first question.`;
+
+  const { OpenAI } = await import("openai");
+  const client = new OpenAI({ apiKey });
+
+  try {
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "system", content: SYSTEM }, ...messages],
+      temperature: 0.7,
+      max_tokens: 2500,
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "";
+
+    // Check for <GENERATE> tag
+    const match = raw.match(/<GENERATE>([\s\S]*?)<\/GENERATE>/);
+    if (match) {
+      const spoken = raw.replace(/<GENERATE>[\s\S]*<\/GENERATE>/, "").trim()
+        || "Perfect — I have everything I need. Building your module now!";
+      try {
+        const moduleData = JSON.parse(match[1].trim());
+        // Normalise via the same validator used by generateModuleWithLLM
+        const { generateModuleWithLLM: _ } = await import("../services/llmModuleGeneratorService");
+        const questions = Array.isArray(moduleData.questions) ? moduleData.questions : [];
+        const normalised = {
+          title:                 String(moduleData.title ?? ""),
+          category:              String(moduleData.category ?? ""),
+          difficulty:            (["beginner","intermediate","advanced"].includes(moduleData.difficulty)
+                                  ? moduleData.difficulty : "intermediate") as "beginner"|"intermediate"|"advanced",
+          description:           String(moduleData.description ?? ""),
+          estimatedTime:         String(moduleData.estimatedTime ?? ""),
+          learningObjectives:    String(moduleData.learningObjectives ?? ""),
+          scenarioTicket:        String(moduleData.scenarioTicket ?? ""),
+          scenarioContext:       String(moduleData.scenarioContext ?? ""),
+          hiddenRootCause:       String(moduleData.hiddenRootCause ?? ""),
+          expectedDiagnosis:     String(moduleData.expectedDiagnosis ?? ""),
+          expectedReasoningPath: String(moduleData.expectedReasoningPath ?? ""),
+          expectedNextSteps:     String(moduleData.expectedNextSteps ?? ""),
+          lessonTakeaway:        String(moduleData.lessonTakeaway ?? ""),
+          llmScoringEnabled:     moduleData.llmScoringEnabled !== false,
+          llmGraderInstructions: String(moduleData.llmGraderInstructions ?? ""),
+          questions: questions.map((q: any) => ({
+            questionText:        String(q.questionText ?? ""),
+            expectedAnswer:      String(q.expectedAnswer ?? ""),
+            maxPoints:           Number(q.maxPoints) || 10,
+            questionType:        q.questionType === "ai_conversation" ? "ai_conversation" : "open_text",
+            rubric:              String(q.rubric ?? ""),
+            aiRoleOrPersona:     String(q.aiRoleOrPersona ?? ""),
+            aiConversationPrompt:String(q.aiConversationPrompt ?? ""),
+            evaluationFocus:     String(q.evaluationFocus ?? ""),
+          })),
+        };
+        res.json({ done: true, message: spoken, module: normalised });
+      } catch {
+        // Bad JSON — treat as a normal reply and let the client retry
+        res.json({ done: false, message: raw });
+      }
+      return;
+    }
+
+    res.json({ done: false, message: raw });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message ?? "Planning chat failed" });
+  }
+});
+
 export default router;
